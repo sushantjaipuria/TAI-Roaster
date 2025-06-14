@@ -1,0 +1,56 @@
+/**
+ * Global CSS Styles for TAI-Roaster
+ * 
+ * This file contains global styles and CSS variables:
+ * - CSS custom properties for consistent theming
+ * - Global reset and base styles
+ * - Utility classes for common patterns
+ * - Responsive design breakpoints
+ * 
+ * Design system:
+ * - Color palette: Primary, secondary, accent colors
+ * - Typography: Font families, sizes, weights
+ * - Spacing: Consistent margin and padding scale
+ * - Shadows: Elevation system for depth
+ * - Border radius: Consistent corner rounding
+ * 
+ * Components:
+ * - Button styles and variants
+ * - Input field and form styling
+ * - Card and panel layouts
+ * - Navigation and header styles
+ * - Chart and visualization styling
+ * 
+ * Responsive design:
+ * - Mobile-first approach
+ * - Breakpoints for tablet and desktop
+ * - Flexible grid system
+ * - Scalable typography
+ * 
+ * Accessibility:
+ * - High contrast color ratios
+ * - Focus states for keyboard navigation
+ * - Screen reader friendly elements
+ * - Proper semantic styling
+ * 
+ * Performance:
+ * - Minimal CSS bundle size
+ * - Critical path optimization
+ * - CSS custom properties for theming
+ * - Efficient selector usage
+ * 
+ * Integration:
+ * - Works with CSS-in-JS solutions
+ * - Compatible with component libraries
+ * - Supports dark/light theme switching
+ * - Customizable through CSS variables
+ */
+
+/* TODO: Define CSS custom properties for theming */
+/* TODO: Add global reset and base styles */
+/* TODO: Implement responsive typography scale */
+/* TODO: Add utility classes for common patterns */
+/* TODO: Define component base styles */
+/* TODO: Implement dark theme support */
+/* TODO: Add animation and transition utilities */
+/* TODO: Optimize for performance and accessibility */

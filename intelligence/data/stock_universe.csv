@@ -1,0 +1,30 @@
+# Stock Universe CSV File
+#
+# This file contains the universe of stocks that the system can analyze
+# 
+# Columns:
+# - symbol: Stock ticker symbol (e.g., RELIANCE.NS, AAPL)
+# - name: Company name
+# - sector: Sector classification
+# - market_cap: Market capitalization category (Large/Mid/Small)
+# - exchange: Stock exchange (NSE, BSE, NASDAQ, NYSE)
+# - currency: Trading currency
+# - country: Country of listing
+# - is_active: Whether stock is actively traded
+# - last_updated: Last update timestamp
+#
+# Usage:
+# - Validation of stock symbols in portfolios
+# - Sector and market cap analysis
+# - Universe filtering for screening
+# - Data source configuration
+#
+# File format: CSV with headers
+# Update frequency: Weekly or as needed
+# Source: Manual curation + API validation
+#
+# Example rows:
+# symbol,name,sector,market_cap,exchange,currency,country,is_active,last_updated
+# RELIANCE.NS,Reliance Industries,Energy,Large,NSE,INR,India,True,2024-01-15
+# TCS.NS,Tata Consultancy Services,IT,Large,NSE,INR,India,True,2024-01-15
+# AAPL,Apple Inc,Technology,Large,NASDAQ,USD,USA,True,2024-01-15

@@ -1,0 +1,22 @@
+# Classifier Model File
+#
+# This file will contain the trained classification model
+# 
+# Model details:
+# - Target: Stock classification (buy/hold/sell or risk categories)
+# - Features: Technical indicators, fundamentals, market signals
+# - Training: Historical labeled data for classification
+# - Format: Pickle serialized scikit-learn or other classifier
+#
+# Classification categories:
+# - Buy/Hold/Sell recommendations
+# - Risk level classifications (Low/Medium/High)
+# - Sector or style classifications
+#
+# Usage:
+# - Loaded by predictors/classifier.py
+# - Used for generating categorical predictions
+# - Updated during model retraining pipeline
+#
+# File will be created after training pipeline is run
+# Should include model metadata and version information
