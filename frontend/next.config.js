@@ -40,11 +40,22 @@
  * - Error tracking configuration
  */
 
-// TODO: Configure environment variables
-// TODO: Set up API URL and backend integration
-// TODO: Configure image optimization
-// TODO: Add build optimization settings
-// TODO: Set up redirects and rewrites
-// TODO: Configure TypeScript and ESLint
-// TODO: Add PWA configuration
-// TODO: Set up analytics integration
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  env: {
+    BACKEND_URL: process.env.BACKEND_URL || 'http://localhost:8000',
+  },
+  async rewrites() {
+    return [
+      {
+        source: '/api/:path*',
+        destination: `${process.env.BACKEND_URL || 'http://localhost:8000'}/api/:path*`,
+      },
+    ];
+  },
+  images: {
+    domains: ['localhost'],
+  },
+};
+
+module.exports = nextConfig;
