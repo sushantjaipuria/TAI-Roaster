@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional
 from enum import Enum
 
@@ -29,7 +29,8 @@ class UserProfileRequest(BaseModel):
     time_horizon: TimeHorizon = Field(..., description="Investment time horizon")
     goals: List[str] = Field(default_factory=list, description="Investment goals")
     
-    @validator('investment_amount')
+    @field_validator('investment_amount')
+    @classmethod
     def validate_investment_amount(cls, v):
         if v <= 0:
             raise ValueError('Investment amount must be positive')
@@ -37,7 +38,8 @@ class UserProfileRequest(BaseModel):
             raise ValueError('Investment amount too large')
         return v
     
-    @validator('goals')
+    @field_validator('goals')
+    @classmethod
     def validate_goals(cls, v):
         if len(v) > 10:
             raise ValueError('Too many goals specified')

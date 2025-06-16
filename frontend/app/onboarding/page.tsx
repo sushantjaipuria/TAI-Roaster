@@ -22,13 +22,13 @@ export default function OnboardingPage() {
       
       if (response.success) {
         // Store session ID locally
-        storage.set('sessionId', response.data?.session_id)
+        storage.set('sessionId', response.session_id)
         storage.set('userProfile', userProfile)
         
         // Redirect to portfolio upload
         router.push('/upload')
       } else {
-        setError(response.error || 'Failed to save profile')
+        setError(response.message || 'Failed to save profile')
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')

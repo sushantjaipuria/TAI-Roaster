@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional
 from datetime import datetime
 
@@ -11,19 +11,22 @@ class PortfolioItem(BaseModel):
     total_value: Optional[float] = Field(None, description="Total position value")
     allocation: Optional[float] = Field(None, description="Allocation percentage")
     
-    @validator('ticker')
+    @field_validator('ticker')
+    @classmethod
     def validate_ticker(cls, v):
         if not v or len(v) > 10:
             raise ValueError('Invalid ticker symbol')
         return v.upper().strip()
     
-    @validator('quantity')
+    @field_validator('quantity')
+    @classmethod
     def validate_quantity(cls, v):
         if v <= 0:
             raise ValueError('Quantity must be positive')
         return v
     
-    @validator('avg_price')
+    @field_validator('avg_price')
+    @classmethod
     def validate_avg_price(cls, v):
         if v <= 0:
             raise ValueError('Average price must be positive')
@@ -35,7 +38,8 @@ class Portfolio(BaseModel):
     total_value: float = Field(default=0, description="Total portfolio value")
     last_updated: datetime = Field(default_factory=datetime.now, description="Last update timestamp")
     
-    @validator('items')
+    @field_validator('items')
+    @classmethod
     def validate_items(cls, v):
         if not v:
             raise ValueError('Portfolio cannot be empty')
