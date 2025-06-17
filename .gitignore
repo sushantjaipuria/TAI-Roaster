@@ -124,6 +124,9 @@ yarn-error.log*
 out/
 build/
 
+# TypeScript
+tsconfig.tsbuildinfo
+
 # Cached ML models and data
 # *.pkl
 *.joblib
