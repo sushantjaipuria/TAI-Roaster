@@ -305,16 +305,7 @@ const CompletePortfolioForm: React.FC<CompletePortfolioFormProps> = ({ className
   // RENDER HELPERS
   // =============================================================================
   
-  const renderHeader = () => (
-    <div className="text-center mb-8">
-      <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-        TAI Roaster Portfolio Setup
-      </h1>
-      <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-        Set up your investment profile and portfolio to get personalized AI-powered analysis and recommendations.
-      </p>
-    </div>
-  )
+
   
   const renderProgress = () => (
     <Card className="mb-8">
@@ -708,18 +699,145 @@ const CompletePortfolioForm: React.FC<CompletePortfolioFormProps> = ({ className
   )
   
   // =============================================================================
+  // RENDER HELPERS - MARKETING CONTENT
+  // =============================================================================
+  
+  const renderMarketingContent = () => (
+    <div className="lg:sticky lg:top-8 lg:h-fit">
+      {/* Hero Section */}
+      <div className="mb-8">
+        <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4 leading-tight">
+          Transform Your Investment Strategy with 
+          <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+            AI-Powered Analysis
+          </span>
+        </h1>
+        <p className="text-xl text-gray-600 mb-8 leading-relaxed">
+          Get personalized recommendations, risk assessment, and optimization suggestions in under 5 minutes
+        </p>
+      </div>
+      
+      {/* Key Benefits */}
+      <div className="space-y-6 mb-8">
+        <div className="flex items-start gap-4">
+          <div className="flex-shrink-0 w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+            <span className="text-2xl">⚡</span>
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Quick 5-Minute Setup</h3>
+            <p className="text-gray-600">Simple form to capture your investment profile and portfolio holdings</p>
+          </div>
+        </div>
+        
+        <div className="flex items-start gap-4">
+          <div className="flex-shrink-0 w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+            <span className="text-2xl">🎯</span>
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Personalized Recommendations</h3>
+            <p className="text-gray-600">Tailored advice based on your risk tolerance and investment goals</p>
+          </div>
+        </div>
+        
+        <div className="flex items-start gap-4">
+          <div className="flex-shrink-0 w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
+            <span className="text-2xl">📊</span>
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Professional-Grade Analysis</h3>
+            <p className="text-gray-600">Advanced AI algorithms analyze your portfolio like a financial advisor</p>
+          </div>
+        </div>
+        
+        <div className="flex items-start gap-4">
+          <div className="flex-shrink-0 w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+            <span className="text-2xl">🛡️</span>
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Risk Assessment & Optimization</h3>
+            <p className="text-gray-600">Identify potential risks and get suggestions to optimize your portfolio</p>
+          </div>
+        </div>
+        
+        <div className="flex items-start gap-4">
+          <div className="flex-shrink-0 w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center">
+            <span className="text-2xl">📈</span>
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Performance Insights</h3>
+            <p className="text-gray-600">Understand how your investments are performing and where to improve</p>
+          </div>
+        </div>
+      </div>
+      
+      {/* How it Works */}
+      <div className="mb-8">
+        <h2 className="text-2xl font-bold text-gray-900 mb-6">How It Works</h2>
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <span className="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-semibold">1</span>
+            <span className="text-gray-700">Complete your investment profile</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-semibold">2</span>
+            <span className="text-gray-700">Upload or enter your portfolio holdings</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-semibold">3</span>
+            <span className="text-gray-700">Get detailed AI-powered analysis and recommendations</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+  
+  // =============================================================================
   // MAIN RENDER
   // =============================================================================
   
   return (
     <div className={`min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 ${className}`}>
       <div className="container mx-auto px-4 py-8">
-        <div className="max-w-4xl mx-auto">
-          {renderHeader()}
-          {renderProgress()}
-          {renderProfileSection()}
-          {renderPortfolioSection()}
-          {renderReviewSection()}
+        {/* Mobile Header - shown only on mobile */}
+        <div className="lg:hidden mb-8">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">
+              TAI Roaster Portfolio Setup
+            </h1>
+            <p className="text-gray-600">
+              Get AI-powered portfolio analysis in minutes
+            </p>
+          </div>
+        </div>
+        
+        {/* Two Column Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16">
+          {/* Left Column - Form */}
+          <div className="order-1 lg:order-1">
+            <div className="max-w-lg mx-auto lg:mx-0">
+              {/* Desktop Header - shown only on desktop inside form column */}
+              <div className="hidden lg:block mb-8">
+                <div className="text-center lg:text-left">
+                  <h2 className="text-2xl font-bold text-gray-900 mb-2">
+                    Get Started
+                  </h2>
+                  <p className="text-gray-600">
+                    Fill out the form to receive your analysis
+                  </p>
+                </div>
+              </div>
+              
+              {renderProgress()}
+              {renderProfileSection()}
+              {renderPortfolioSection()}
+              {renderReviewSection()}
+            </div>
+          </div>
+          
+          {/* Right Column - Marketing Content */}
+          <div className="order-2 lg:order-2">
+            {renderMarketingContent()}
+          </div>
         </div>
       </div>
     </div>
