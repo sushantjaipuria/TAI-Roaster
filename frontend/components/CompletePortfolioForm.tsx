@@ -133,7 +133,7 @@ const CompletePortfolioForm: React.FC<CompletePortfolioFormProps> = ({ className
   })
   
   // Form State
-  const [activeTab, setActiveTab] = useState<'manual' | 'upload'>('manual')
+  const [activeTab, setActiveTab] = useState<'manual' | 'upload'>('upload')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [validationErrors, setValidationErrors] = useState<{[key: string]: string}>({})
