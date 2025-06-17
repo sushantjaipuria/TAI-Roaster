@@ -118,8 +118,8 @@ const InputForm: React.FC<InputFormProps> = ({
     warnings: []
   })
   
-  // UI State
-  const [activeTab, setActiveTab] = useState<'manual' | 'upload'>('manual')
+  // UI State - Enhanced to default to 'upload' tab
+  const [activeTab, setActiveTab] = useState<'manual' | 'upload'>('upload')
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
   const [showPreview, setShowPreview] = useState(false)
   const [validationResponse, setValidationResponse] = useState<PortfolioValidationResponse | null>(null)
@@ -198,7 +198,103 @@ const InputForm: React.FC<InputFormProps> = ({
       }))
     } catch (error) {
       console.error('Validation error:', error)
-    } finally {\n      setFormState(prev => ({ ...prev, isValidating: false }))\n    }\n  }, [holdings, userProfile])\n  \n  // =============================================================================\n  // HANDLERS\n  // =============================================================================\n  \n  const handleAddHolding = useCallback(() => {\n    const errors = validateHolding(currentHolding)\n    \n    if (errors.length > 0) {\n      setFormState(prev => ({ ...prev, validationErrors: errors }))\n      return\n    }\n    \n    const newHolding: PortfolioHolding = {\n      ticker: currentHolding.ticker!.toUpperCase().trim(),\n      quantity: currentHolding.quantity!,\n      avgBuyPrice: currentHolding.avgBuyPrice!,\n      buyDate: currentHolding.buyDate,\n      currentPrice: currentHolding.currentPrice\n    }\n    \n    if (editingIndex !== null) {\n      // Update existing holding\n      const updatedHoldings = [...holdings]\n      updatedHoldings[editingIndex] = newHolding\n      setHoldings(updatedHoldings)\n      setEditingIndex(null)\n    } else {\n      // Add new holding\n      setHoldings(prev => [...prev, newHolding])\n    }\n    \n    // Clear current holding\n    setCurrentHolding({ ...DEFAULT_HOLDING })\n    setFormState(prev => ({ ...prev, validationErrors: [] }))\n    \n    // Trigger validation\n    setTimeout(() => validatePortfolio(), 100)\n  }, [currentHolding, holdings, editingIndex, validateHolding, validatePortfolio])\n  \n  const handleEditHolding = useCallback((index: number) => {\n    const holding = holdings[index]\n    setCurrentHolding(holding)\n    setEditingIndex(index)\n    setActiveTab('manual')\n  }, [holdings])\n  \n  const handleRemoveHolding = useCallback((index: number) => {\n    setHoldings(prev => prev.filter((_, i) => i !== index))\n    if (editingIndex === index) {\n      setCurrentHolding({ ...DEFAULT_HOLDING })\n      setEditingIndex(null)\n    }\n    setTimeout(() => validatePortfolio(), 100)\n  }, [editingIndex, validatePortfolio])\n  \n  const handleClearForm = useCallback(() => {\n    setHoldings([])\n    setCurrentHolding({ ...DEFAULT_HOLDING })\n    setEditingIndex(null)\n    setValidationResponse(null)\n    setFormState({\n      currentHolding: { ...DEFAULT_HOLDING },\n      holdings: [],\n      validationErrors: [],\n      validationWarnings: [],\n      isValidating: false,\n      isDirty: false,\n      isSubmitting: false,\n      submitErrors: []\n    })\n  }, [])\n  \n  const handleFileUploadSuccess = useCallback((portfolio: PortfolioInput) => {\n    setHoldings(portfolio.holdings)\n    setActiveTab('manual') // Switch to manual tab to show imported data\n    setTimeout(() => validatePortfolio(), 100)\n  }, [validatePortfolio])\n  \n  const handleSubmit = useCallback(async () => {\n    if (holdings.length === 0) {\n      setFormState(prev => ({\n        ...prev,\n        submitErrors: ['Portfolio cannot be empty. Please add at least one holding.']\n      }))\n      return\n    }\n    \n    setFormState(prev => ({ ...prev, isSubmitting: true, submitErrors: [] }))\n    \n    try {\n      const portfolio: PortfolioInput = { holdings }\n      // First validate the portfolio
+    } finally {
+      setFormState(prev => ({ ...prev, isValidating: false }))
+    }
+  }, [holdings, userProfile])
+  
+  // =============================================================================
+  // HANDLERS
+  // =============================================================================
+  
+  const handleAddHolding = useCallback(() => {
+    const errors = validateHolding(currentHolding)
+    
+    if (errors.length > 0) {
+      setFormState(prev => ({ ...prev, validationErrors: errors }))
+      return
+    }
+    
+    const newHolding: PortfolioHolding = {
+      ticker: currentHolding.ticker!.toUpperCase().trim(),
+      quantity: currentHolding.quantity!,
+      avgBuyPrice: currentHolding.avgBuyPrice!,
+      buyDate: currentHolding.buyDate,
+      currentPrice: currentHolding.currentPrice
+    }
+    
+    if (editingIndex !== null) {
+      // Update existing holding
+      const updatedHoldings = [...holdings]
+      updatedHoldings[editingIndex] = newHolding
+      setHoldings(updatedHoldings)
+      setEditingIndex(null)
+    } else {
+      // Add new holding
+      setHoldings(prev => [...prev, newHolding])
+    }
+    
+    // Clear current holding
+    setCurrentHolding({ ...DEFAULT_HOLDING })
+    setFormState(prev => ({ ...prev, validationErrors: [] }))
+    
+    // Trigger validation
+    setTimeout(() => validatePortfolio(), 100)
+  }, [currentHolding, holdings, editingIndex, validateHolding, validatePortfolio])
+  
+  const handleEditHolding = useCallback((index: number) => {
+    const holding = holdings[index]
+    setCurrentHolding(holding)
+    setEditingIndex(index)
+    setActiveTab('manual')
+  }, [holdings])
+  
+  const handleRemoveHolding = useCallback((index: number) => {
+    setHoldings(prev => prev.filter((_, i) => i !== index))
+    if (editingIndex === index) {
+      setCurrentHolding({ ...DEFAULT_HOLDING })
+      setEditingIndex(null)
+    }
+    setTimeout(() => validatePortfolio(), 100)
+  }, [editingIndex, validatePortfolio])
+  
+  const handleClearForm = useCallback(() => {
+    setHoldings([])
+    setCurrentHolding({ ...DEFAULT_HOLDING })
+    setEditingIndex(null)
+    setValidationResponse(null)
+    setFormState({
+      currentHolding: { ...DEFAULT_HOLDING },
+      holdings: [],
+      validationErrors: [],
+      validationWarnings: [],
+      isValidating: false,
+      isDirty: false,
+      isSubmitting: false,
+      submitErrors: []
+    })
+  }, [])
+  
+  const handleFileUploadSuccess = useCallback((portfolio: PortfolioInput) => {
+    setHoldings(portfolio.holdings)
+    setActiveTab('manual') // Switch to manual tab to show imported data
+    setTimeout(() => validatePortfolio(), 100)
+  }, [validatePortfolio])
+  
+  const handleSubmit = useCallback(async () => {
+    if (holdings.length === 0) {
+      setFormState(prev => ({
+        ...prev,
+        submitErrors: ['Portfolio cannot be empty. Please add at least one holding.']
+      }))
+      return
+    }
+    
+    setFormState(prev => ({ ...prev, isSubmitting: true, submitErrors: [] }))
+    
+    try {
+      const portfolio: PortfolioInput = { holdings }
+      // First validate the portfolio
       const validationResult = await PortfolioApiClient.validatePortfolio(portfolio, userProfile)
       
       if (!validationResult.isValid) {
@@ -215,4 +311,337 @@ const InputForm: React.FC<InputFormProps> = ({
       const analysisResult = await PortfolioApiClient.analyzePortfolio(portfolio, userProfile)
       
       // Call the parent component's onSubmit with analysis ID
-      await onSubmit(portfolio, userProfile, analysisResult.analysisId)\n    } catch (error: any) {\n      setFormState(prev => ({\n        ...prev,\n        submitErrors: [error.message || 'Failed to submit portfolio']\n      }))\n    } finally {\n      setFormState(prev => ({ ...prev, isSubmitting: false }))\n    }\n  }, [holdings, userProfile, onSubmit])\n  \n  // =============================================================================\n  // COMPUTED VALUES\n  // =============================================================================\n  \n  const totalValue = holdings.reduce((sum, holding) => \n    sum + (holding.quantity * holding.avgBuyPrice), 0\n  )\n  \n  const currentHoldingErrors = validateHolding(currentHolding)\n  const canAddHolding = Object.values(currentHolding).some(val => val !== '' && val !== 0) && \n                       currentHoldingErrors.length === 0\n  \n  const canSubmit = holdings.length > 0 && \n                   validationResponse?.isValid !== false && \n                   !formState.isSubmitting\n  \n  // =============================================================================\n  // RENDER\n  // =============================================================================\n  \n  return (\n    <div className=\"max-w-4xl mx-auto p-6 space-y-8\">\n      {/* Header */}\n      <div className=\"text-center\">\n        <h1 className=\"text-3xl font-bold text-gray-900 mb-2\">\n          Portfolio Analysis Setup\n        </h1>\n        <p className=\"text-gray-600\">\n          Enter your portfolio data and preferences to get personalized investment analysis\n        </p>\n      </div>\n      \n      {/* User Profile Section */}\n      <UserProfileForm \n        userProfile={userProfile}\n        onChange={setUserProfile}\n      />\n      \n      {/* Portfolio Input Tabs */}\n      <Card>\n        <CardHeader>\n          <CardTitle className=\"flex items-center gap-2\">\n            <FileText className=\"h-5 w-5\" />\n            Portfolio Holdings\n          </CardTitle>\n        </CardHeader>\n        <CardContent>\n          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'manual' | 'upload')}>\n            <TabsList className=\"grid w-full grid-cols-2\">\n              <TabsTrigger value=\"manual\">Manual Entry</TabsTrigger>\n              <TabsTrigger value=\"upload\">File Upload</TabsTrigger>\n            </TabsList>\n            \n            {/* Manual Entry Tab */}\n            <TabsContent value=\"manual\" className=\"space-y-6\">\n              {/* Current Holding Form */}\n              <div className=\"grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 p-4 border rounded-lg bg-gray-50\">\n                <div>\n                  <Label htmlFor=\"ticker\">Stock Symbol *</Label>\n                  <Input\n                    id=\"ticker\"\n                    value={currentHolding.ticker || ''}\n                    onChange={(e) => setCurrentHolding(prev => ({ \n                      ...prev, \n                      ticker: e.target.value.toUpperCase() \n                    }))}\n                    placeholder=\"e.g., RELIANCE\"\n                    className={currentHoldingErrors.find(e => e.field === 'ticker') ? 'border-red-500' : ''}\n                  />\n                </div>\n                \n                <div>\n                  <Label htmlFor=\"quantity\">Quantity *</Label>\n                  <Input\n                    id=\"quantity\"\n                    type=\"number\"\n                    value={currentHolding.quantity || ''}\n                    onChange={(e) => setCurrentHolding(prev => ({ \n                      ...prev, \n                      quantity: parseInt(e.target.value) || 0 \n                    }))}\n                    placeholder=\"Number of shares\"\n                    className={currentHoldingErrors.find(e => e.field === 'quantity') ? 'border-red-500' : ''}\n                  />\n                </div>\n                \n                <div>\n                  <Label htmlFor=\"avgBuyPrice\">Avg Buy Price (₹) *</Label>\n                  <Input\n                    id=\"avgBuyPrice\"\n                    type=\"number\"\n                    step=\"0.01\"\n                    value={currentHolding.avgBuyPrice || ''}\n                    onChange={(e) => setCurrentHolding(prev => ({ \n                      ...prev, \n                      avgBuyPrice: parseFloat(e.target.value) || 0 \n                    }))}\n                    placeholder=\"Price per share\"\n                    className={currentHoldingErrors.find(e => e.field === 'avgBuyPrice') ? 'border-red-500' : ''}\n                  />\n                </div>\n                \n                <div className=\"flex items-end\">\n                  <Button \n                    onClick={handleAddHolding}\n                    disabled={!canAddHolding}\n                    className=\"w-full\"\n                  >\n                    <Plus className=\"h-4 w-4 mr-2\" />\n                    {editingIndex !== null ? 'Update' : 'Add'}\n                  </Button>\n                </div>\n              </div>\n              \n              {/* Current Holding Errors */}\n              {currentHoldingErrors.length > 0 && (\n                <Alert variant=\"destructive\">\n                  <AlertTriangle className=\"h-4 w-4\" />\n                  <AlertTitle>Please fix the following errors:</AlertTitle>\n                  <AlertDescription>\n                    <ul className=\"list-disc list-inside\">\n                      {currentHoldingErrors.map((error, index) => (\n                        <li key={index}>{error.message}</li>\n                      ))}\n                    </ul>\n                  </AlertDescription>\n                </Alert>\n              )}\n              \n              {/* Holdings List */}\n              {holdings.length > 0 && (\n                <div className=\"space-y-4\">\n                  <div className=\"flex items-center justify-between\">\n                    <h3 className=\"text-lg font-semibold\">Your Holdings ({holdings.length})</h3>\n                    <div className=\"text-sm text-gray-600\">\n                      Total Value: ₹{totalValue.toLocaleString('en-IN', { maximumFractionDigits: 2 })}\n                    </div>\n                  </div>\n                  \n                  <div className=\"space-y-2\">\n                    {holdings.map((holding, index) => (\n                      <div key={index} className=\"flex items-center justify-between p-3 border rounded-lg bg-white\">\n                        <div className=\"flex-1 grid grid-cols-4 gap-4\">\n                          <div>\n                            <span className=\"font-medium\">{holding.ticker}</span>\n                          </div>\n                          <div>\n                            <span className=\"text-gray-600\">{holding.quantity.toLocaleString()} shares</span>\n                          </div>\n                          <div>\n                            <span className=\"text-gray-600\">₹{holding.avgBuyPrice.toFixed(2)}</span>\n                          </div>\n                          <div>\n                            <span className=\"font-medium\">\n                              ₹{(holding.quantity * holding.avgBuyPrice).toLocaleString('en-IN', { maximumFractionDigits: 2 })}\n                            </span>\n                          </div>\n                        </div>\n                        \n                        <div className=\"flex items-center gap-2\">\n                          <Button \n                            variant=\"outline\" \n                            size=\"sm\"\n                            onClick={() => handleEditHolding(index)}\n                          >\n                            Edit\n                          </Button>\n                          <Button \n                            variant=\"outline\" \n                            size=\"sm\"\n                            onClick={() => handleRemoveHolding(index)}\n                          >\n                            <Trash2 className=\"h-4 w-4\" />\n                          </Button>\n                        </div>\n                      </div>\n                    ))}\n                  </div>\n                </div>\n              )}\n            </TabsContent>\n            \n            {/* File Upload Tab */}\n            <TabsContent value=\"upload\">\n              <FileUploadSection \n                onSuccess={handleFileUploadSuccess}\n                state={fileUploadState}\n                onStateChange={setFileUploadState}\n              />\n            </TabsContent>\n          </Tabs>\n        </CardContent>\n      </Card>\n      \n      {/* Validation Results */}\n      {validationResponse && (\n        <Card>\n          <CardHeader>\n            <CardTitle className=\"flex items-center gap-2\">\n              {validationResponse.isValid ? (\n                <CheckCircle className=\"h-5 w-5 text-green-600\" />\n              ) : (\n                <AlertTriangle className=\"h-5 w-5 text-red-600\" />\n              )}\n              Portfolio Validation\n            </CardTitle>\n          </CardHeader>\n          <CardContent>\n            {validationResponse.errors && validationResponse.errors.length > 0 && (\n              <Alert variant=\"destructive\" className=\"mb-4\">\n                <AlertTriangle className=\"h-4 w-4\" />\n                <AlertTitle>Validation Errors</AlertTitle>\n                <AlertDescription>\n                  <ul className=\"list-disc list-inside\">\n                    {validationResponse.errors.map((error, index) => (\n                      <li key={index}>{error.message}</li>\n                    ))}\n                  </ul>\n                </AlertDescription>\n              </Alert>\n            )}\n            \n            {validationResponse.warnings && validationResponse.warnings.length > 0 && (\n              <Alert className=\"mb-4\">\n                <Info className=\"h-4 w-4\" />\n                <AlertTitle>Recommendations</AlertTitle>\n                <AlertDescription>\n                  <ul className=\"list-disc list-inside\">\n                    {validationResponse.warnings.map((warning, index) => (\n                      <li key={index}>{warning}</li>\n                    ))}\n                  </ul>\n                </AlertDescription>\n              </Alert>\n            )}\n            \n            {validationResponse.isValid && (\n              <Alert>\n                <CheckCircle className=\"h-4 w-4\" />\n                <AlertTitle>Portfolio looks good!</AlertTitle>\n                <AlertDescription>\n                  Your portfolio has been validated successfully. \n                  Total Value: ₹{validationResponse.totalValue?.toLocaleString('en-IN') || 0} • \n                  Holdings: {validationResponse.holdingsCount || 0}\n                </AlertDescription>\n              </Alert>\n            )}\n          </CardContent>\n        </Card>\n      )}\n      \n      {/* Submit Errors */}\n      {formState.submitErrors.length > 0 && (\n        <Alert variant=\"destructive\">\n          <AlertTriangle className=\"h-4 w-4\" />\n          <AlertTitle>Submission Error</AlertTitle>\n          <AlertDescription>\n            <ul className=\"list-disc list-inside\">\n              {formState.submitErrors.map((error, index) => (\n                <li key={index}>{error}</li>\n              ))}\n            </ul>\n          </AlertDescription>\n        </Alert>\n      )}\n      \n      {/* Action Buttons */}\n      <div className=\"flex items-center justify-between pt-6 border-t\">\n        <div className=\"flex items-center gap-4\">\n          <Button \n            variant=\"outline\" \n            onClick={handleClearForm}\n            disabled={formState.isSubmitting}\n          >\n            Clear All\n          </Button>\n          \n          {formState.isDirty && (\n            <Badge variant=\"secondary\">Unsaved changes</Badge>\n          )}\n        </div>\n        \n        <div className=\"flex items-center gap-4\">\n          <Button \n            variant=\"outline\"\n            onClick={() => setShowPreview(true)}\n            disabled={holdings.length === 0}\n          >\n            Preview\n          </Button>\n          \n          <Button \n            onClick={handleSubmit}\n            disabled={!canSubmit}\n            className=\"min-w-[120px]\"\n          >\n            {formState.isSubmitting ? (\n              <div className=\"flex items-center gap-2\">\n                <div className=\"animate-spin rounded-full h-4 w-4 border-b-2 border-white\"></div>\n                Processing...\n              </div>\n            ) : (\n              'Analyze Portfolio'\n            )}\n          </Button>\n        </div>\n      </div>\n      \n      {/* Portfolio Preview Modal */}\n      {showPreview && holdings.length > 0 && (\n        <PortfolioPreview \n          portfolio={{ holdings }}\n          validationResponse={validationResponse}\n          onClose={() => setShowPreview(false)}\n          onConfirm={handleSubmit}\n          isLoading={formState.isSubmitting}\n        />\n      )}\n    </div>\n  )\n}\n\nexport default InputForm"}
+      await onSubmit(portfolio, userProfile, analysisResult.analysisId)
+    } catch (error: any) {
+      setFormState(prev => ({
+        ...prev,
+        submitErrors: [error.message || 'Failed to submit portfolio']
+      }))
+    } finally {
+      setFormState(prev => ({ ...prev, isSubmitting: false }))
+    }
+  }, [holdings, userProfile, onSubmit])
+  
+  // =============================================================================
+  // COMPUTED VALUES
+  // =============================================================================
+  
+  const totalValue = holdings.reduce((sum, holding) => 
+    sum + (holding.quantity * holding.avgBuyPrice), 0
+  )
+  
+  const currentHoldingErrors = validateHolding(currentHolding)
+  const canAddHolding = Object.values(currentHolding).some(val => val !== '' && val !== 0) && 
+                       currentHoldingErrors.length === 0
+  
+  const canSubmit = holdings.length > 0 && 
+                   validationResponse?.isValid !== false && 
+                   !formState.isSubmitting
+  
+  // =============================================================================
+  // RENDER
+  // =============================================================================
+  
+  return (
+    <div className="max-w-4xl mx-auto p-6 space-y-8">
+      {/* Header */}
+      <div className="text-center">
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">
+          Portfolio Analysis Setup
+        </h1>
+        <p className="text-gray-600">
+          Enter your portfolio data and preferences to get personalized investment analysis
+        </p>
+      </div>
+      
+      {/* User Profile Section */}
+      <UserProfileForm 
+        userProfile={userProfile}
+        onChange={setUserProfile}
+      />
+      
+      {/* Portfolio Input Tabs */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5" />
+            Portfolio Holdings
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'manual' | 'upload')}>
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="manual">Manual Entry</TabsTrigger>
+              <TabsTrigger value="upload">File Upload</TabsTrigger>
+            </TabsList>
+            
+            {/* Manual Entry Tab */}
+            <TabsContent value="manual" className="space-y-6">
+              {/* Current Holding Form */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 p-4 border rounded-lg bg-gray-50">
+                <div>
+                  <Label htmlFor="ticker">Stock Symbol *</Label>
+                  <Input
+                    id="ticker"
+                    value={currentHolding.ticker || ''}
+                    onChange={(e) => setCurrentHolding(prev => ({ 
+                      ...prev, 
+                      ticker: e.target.value.toUpperCase() 
+                    }))}
+                    placeholder="e.g., RELIANCE"
+                    className={currentHoldingErrors.find(e => e.field === 'ticker') ? 'border-red-500' : ''}
+                  />
+                </div>
+                
+                <div>
+                  <Label htmlFor="quantity">Quantity *</Label>
+                  <Input
+                    id="quantity"
+                    type="number"
+                    value={currentHolding.quantity || ''}
+                    onChange={(e) => setCurrentHolding(prev => ({ 
+                      ...prev, 
+                      quantity: parseInt(e.target.value) || 0 
+                    }))}
+                    placeholder="Number of shares"
+                    className={currentHoldingErrors.find(e => e.field === 'quantity') ? 'border-red-500' : ''}
+                  />
+                </div>
+                
+                <div>
+                  <Label htmlFor="avgBuyPrice">Avg Buy Price (₹) *</Label>
+                  <Input
+                    id="avgBuyPrice"
+                    type="number"
+                    step="0.01"
+                    value={currentHolding.avgBuyPrice || ''}
+                    onChange={(e) => setCurrentHolding(prev => ({ 
+                      ...prev, 
+                      avgBuyPrice: parseFloat(e.target.value) || 0 
+                    }))}
+                    placeholder="Price per share"
+                    className={currentHoldingErrors.find(e => e.field === 'avgBuyPrice') ? 'border-red-500' : ''}
+                  />
+                </div>
+                
+                <div className="flex items-end">
+                  <Button 
+                    onClick={handleAddHolding}
+                    disabled={!canAddHolding}
+                    className="w-full"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    {editingIndex !== null ? 'Update' : 'Add'}
+                  </Button>
+                </div>
+              </div>
+              
+              {/* Current Holding Errors */}
+              {currentHoldingErrors.length > 0 && (
+                <Alert variant="destructive">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTitle>Please fix the following errors:</AlertTitle>
+                  <AlertDescription>
+                    <ul className="list-disc list-inside">
+                      {currentHoldingErrors.map((error, index) => (
+                        <li key={index}>{error.message}</li>
+                      ))}
+                    </ul>
+                  </AlertDescription>
+                </Alert>
+              )}
+              
+              {/* Holdings List */}
+              {holdings.length > 0 && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold">Your Holdings ({holdings.length})</h3>
+                    <div className="text-sm text-gray-600">
+                      Total Value: ₹{totalValue.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    {holdings.map((holding, index) => (
+                      <div key={index} className="flex items-center justify-between p-3 border rounded-lg bg-white">
+                        <div className="flex-1 grid grid-cols-4 gap-4">
+                          <div>
+                            <span className="font-medium">{holding.ticker}</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-600">{holding.quantity.toLocaleString()} shares</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-600">₹{holding.avgBuyPrice.toFixed(2)}</span>
+                          </div>
+                          <div>
+                            <span className="font-medium">
+                              ₹{(holding.quantity * holding.avgBuyPrice).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => handleEditHolding(index)}
+                          >
+                            Edit
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => handleRemoveHolding(index)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </TabsContent>
+            
+            {/* File Upload Tab */}
+            <TabsContent value="upload">
+              <FileUploadSection 
+                onSuccess={handleFileUploadSuccess}
+                state={fileUploadState}
+                onStateChange={setFileUploadState}
+              />
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
+      
+      {/* Validation Results */}
+      {validationResponse && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              {validationResponse.isValid ? (
+                <CheckCircle className="h-5 w-5 text-green-600" />
+              ) : (
+                <AlertTriangle className="h-5 w-5 text-red-600" />
+              )}
+              Portfolio Validation
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {validationResponse.errors && validationResponse.errors.length > 0 && (
+              <Alert variant="destructive" className="mb-4">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Validation Errors</AlertTitle>
+                <AlertDescription>
+                  <ul className="list-disc list-inside">
+                    {validationResponse.errors.map((error, index) => (
+                      <li key={index}>{error.message}</li>
+                    ))}
+                  </ul>
+                </AlertDescription>
+              </Alert>
+            )}
+            
+            {validationResponse.warnings && validationResponse.warnings.length > 0 && (
+              <Alert className="mb-4">
+                <Info className="h-4 w-4" />
+                <AlertTitle>Recommendations</AlertTitle>
+                <AlertDescription>
+                  <ul className="list-disc list-inside">
+                    {validationResponse.warnings.map((warning, index) => (
+                      <li key={index}>{warning}</li>
+                    ))}
+                  </ul>
+                </AlertDescription>
+              </Alert>
+            )}
+            
+            {validationResponse.isValid && (
+              <Alert>
+                <CheckCircle className="h-4 w-4" />
+                <AlertTitle>Portfolio looks good!</AlertTitle>
+                <AlertDescription>
+                  Your portfolio has been validated successfully. 
+                  Total Value: ₹{validationResponse.totalValue?.toLocaleString('en-IN') || 0} • 
+                  Holdings: {validationResponse.holdingsCount || 0}
+                </AlertDescription>
+              </Alert>
+            )}
+          </CardContent>
+        </Card>
+      )}
+      
+      {/* Submit Errors */}
+      {formState.submitErrors.length > 0 && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Submission Error</AlertTitle>
+          <AlertDescription>
+            <ul className="list-disc list-inside">
+              {formState.submitErrors.map((error, index) => (
+                <li key={index}>{error}</li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      )}
+      
+      {/* Action Buttons */}
+      <div className="flex items-center justify-between pt-6 border-t">
+        <div className="flex items-center gap-4">
+          <Button 
+            variant="outline" 
+            onClick={handleClearForm}
+            disabled={formState.isSubmitting}
+          >
+            Clear All
+          </Button>
+          
+          {formState.isDirty && (
+            <Badge variant="secondary">Unsaved changes</Badge>
+          )}
+        </div>
+        
+        <div className="flex items-center gap-4">
+          <Button 
+            variant="outline"
+            onClick={() => setShowPreview(true)}
+            disabled={holdings.length === 0}
+          >
+            Preview
+          </Button>
+          
+          <Button 
+            onClick={handleSubmit}
+            disabled={!canSubmit}
+            className="min-w-[120px]"
+          >
+            {formState.isSubmitting ? (
+              <div className="flex items-center gap-2">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                Processing...
+              </div>
+            ) : (
+              'Analyze Portfolio'
+            )}
+          </Button>
+        </div>
+      </div>
+      
+      {/* Portfolio Preview Modal */}
+      {showPreview && holdings.length > 0 && (
+        <PortfolioPreview 
+          portfolio={{ holdings }}
+          validationResponse={validationResponse}
+          onClose={() => setShowPreview(false)}
+          onConfirm={handleSubmit}
+          isLoading={formState.isSubmitting}
+        />
+      )}
+    </div>
+  )
+}
+
+export default InputForm
