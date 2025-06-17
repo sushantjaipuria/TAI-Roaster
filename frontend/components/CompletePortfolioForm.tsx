@@ -17,6 +17,7 @@ import {
   UserProfile, 
   PortfolioHolding, 
   PortfolioInput,
+  FileUploadState,
   DEFAULT_USER_PROFILE,
   DEFAULT_HOLDING,
   RISK_TOLERANCE_OPTIONS,
@@ -24,6 +25,7 @@ import {
   TIME_HORIZON_OPTIONS
 } from '../lib/types'
 import { PortfolioApiClient } from '../lib/api'
+import FileUploadSection from './FileUploadSection'
 
 // Simple styled components (no external UI library dependencies)
 const Card = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => (
@@ -143,6 +145,17 @@ const CompletePortfolioForm: React.FC<CompletePortfolioFormProps> = ({ className
   }>({
     profile: false,
     portfolio: false
+  })
+  
+  // File Upload State
+  const [fileUploadState, setFileUploadState] = useState<FileUploadState>({
+    file: null,
+    isUploading: false,
+    isProcessing: false,
+    uploadProgress: 0,
+    portfolio: null,
+    errors: [],
+    warnings: []
   })
   
   // =============================================================================
@@ -627,12 +640,14 @@ const CompletePortfolioForm: React.FC<CompletePortfolioFormProps> = ({ className
         {activeTab === 'manual' && renderManualEntry()}
         
         {activeTab === 'upload' && (
-          <div className="p-8 border-2 border-dashed border-gray-300 rounded-lg text-center">
-            <p className="text-gray-500 mb-4">File upload feature coming soon</p>
-            <p className="text-sm text-gray-400">
-              For now, please use manual entry to add your holdings
-            </p>
-          </div>
+          <FileUploadSection 
+            onSuccess={(portfolio) => {
+              setHoldings(portfolio.holdings)
+              setActiveTab('manual') // Switch to manual tab to show imported data
+            }}
+            state={fileUploadState}
+            onStateChange={setFileUploadState}
+          />
         )}
         
         {validationErrors.portfolio && (

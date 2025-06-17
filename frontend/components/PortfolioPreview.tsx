@@ -1,1 +1,267 @@
-/**\n * Portfolio Preview Component\n * \n * Shows parsed portfolio data for user review before final submission:\n * - Portfolio summary and statistics\n * - Detailed holdings breakdown\n * - Validation results display\n * - Sector allocation visualization\n * - Action buttons for edit/confirm\n * \n * Features:\n * - Comprehensive portfolio overview\n * - Validation status with errors/warnings\n * - Interactive holdings table\n * - Visual allocation charts\n * - Modal/overlay interface\n * - Responsive design\n */\n\n'use client'\n\nimport React, { useState, useMemo } from 'react'\nimport { \n  PortfolioInput, \n  PortfolioValidationResponse,\n  PortfolioHolding \n} from '../lib/types'\nimport { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'\nimport { Button } from '@/components/ui/button'\nimport { Badge } from '@/components/ui/badge'\nimport { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'\nimport { Progress } from '@/components/ui/progress'\nimport { \n  X, \n  CheckCircle, \n  AlertTriangle, \n  Info, \n  PieChart,\n  TrendingUp,\n  DollarSign,\n  BarChart3,\n  Edit,\n  Send\n} from 'lucide-react'\n\ninterface PortfolioPreviewProps {\n  portfolio: PortfolioInput\n  validationResponse?: PortfolioValidationResponse | null\n  onClose: () => void\n  onConfirm: () => void\n  isLoading?: boolean\n}\n\nconst PortfolioPreview: React.FC<PortfolioPreviewProps> = ({\n  portfolio,\n  validationResponse,\n  onClose,\n  onConfirm,\n  isLoading = false\n}) => {\n  // =============================================================================\n  // LOCAL STATE\n  // =============================================================================\n  \n  const [activeTab, setActiveTab] = useState<'overview' | 'holdings' | 'validation'>('overview')\n  \n  // =============================================================================\n  // COMPUTED VALUES\n  // =============================================================================\n  \n  const portfolioStats = useMemo(() => {\n    const holdings = portfolio.holdings\n    const totalValue = holdings.reduce((sum, h) => sum + (h.quantity * h.avgBuyPrice), 0)\n    const totalShares = holdings.reduce((sum, h) => sum + h.quantity, 0)\n    const avgPricePerShare = totalShares > 0 ? totalValue / totalShares : 0\n    \n    // Calculate largest position\n    const largestPosition = holdings.reduce((max, h) => {\n      const value = h.quantity * h.avgBuyPrice\n      return value > max.value ? { ticker: h.ticker, value, percentage: (value / totalValue) * 100 } : max\n    }, { ticker: '', value: 0, percentage: 0 })\n    \n    // Calculate price ranges\n    const prices = holdings.map(h => h.avgBuyPrice)\n    const minPrice = Math.min(...prices)\n    const maxPrice = Math.max(...prices)\n    \n    return {\n      totalValue,\n      totalShares,\n      avgPricePerShare,\n      holdingsCount: holdings.length,\n      largestPosition,\n      priceRange: { min: minPrice, max: maxPrice }\n    }\n  }, [portfolio.holdings])\n  \n  const sectorAllocation = useMemo(() => {\n    // Simplified sector mapping for demo\n    const sectorMap: { [key: string]: string } = {\n      'RELIANCE': 'Energy',\n      'TCS': 'Technology',\n      'HDFCBANK': 'Banking',\n      'INFY': 'Technology',\n      'ICICIBANK': 'Banking',\n      'HINDUNILVR': 'FMCG',\n      'ITC': 'FMCG',\n      'SBIN': 'Banking',\n      'BHARTIARTL': 'Telecom',\n      'KOTAKBANK': 'Banking',\n      'MARUTI': 'Auto',\n      'ASIANPAINT': 'Chemicals',\n      'LT': 'Infrastructure'\n    }\n    \n    const sectorValues: { [sector: string]: number } = {}\n    \n    portfolio.holdings.forEach(holding => {\n      const sector = sectorMap[holding.ticker] || 'Others'\n      const value = holding.quantity * holding.avgBuyPrice\n      sectorValues[sector] = (sectorValues[sector] || 0) + value\n    })\n    \n    const totalValue = portfolioStats.totalValue\n    \n    return Object.entries(sectorValues)\n      .map(([sector, value]) => ({\n        sector,\n        value,\n        percentage: (value / totalValue) * 100\n      }))\n      .sort((a, b) => b.value - a.value)\n  }, [portfolio.holdings, portfolioStats.totalValue])\n  \n  const riskMetrics = useMemo(() => {\n    const concentrationRisk = portfolioStats.largestPosition.percentage\n    const diversificationScore = Math.min(portfolio.holdings.length * 10, 100) // Simple scoring\n    \n    let riskLevel: 'low' | 'medium' | 'high' = 'medium'\n    if (concentrationRisk > 30 || portfolio.holdings.length < 5) {\n      riskLevel = 'high'\n    } else if (concentrationRisk < 15 && portfolio.holdings.length >= 10) {\n      riskLevel = 'low'\n    }\n    \n    return {\n      concentrationRisk,\n      diversificationScore,\n      riskLevel\n    }\n  }, [portfolio.holdings.length, portfolioStats.largestPosition.percentage])\n  \n  // =============================================================================\n  // RENDER HELPERS\n  // =============================================================================\n  \n  const renderOverview = () => (\n    <div className=\"space-y-6\">\n      {/* Portfolio Summary Cards */}\n      <div className=\"grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4\">\n        <Card>\n          <CardContent className=\"pt-6\">\n            <div className=\"flex items-center justify-between\">\n              <div>\n                <p className=\"text-sm font-medium text-gray-600\">Total Value</p>\n                <p className=\"text-2xl font-bold text-green-600\">\n                  ₹{portfolioStats.totalValue.toLocaleString('en-IN')}\n                </p>\n              </div>\n              <DollarSign className=\"h-8 w-8 text-green-600\" />\n            </div>\n          </CardContent>\n        </Card>\n        \n        <Card>\n          <CardContent className=\"pt-6\">\n            <div className=\"flex items-center justify-between\">\n              <div>\n                <p className=\"text-sm font-medium text-gray-600\">Holdings</p>\n                <p className=\"text-2xl font-bold text-blue-600\">\n                  {portfolioStats.holdingsCount}\n                </p>\n              </div>\n              <BarChart3 className=\"h-8 w-8 text-blue-600\" />\n            </div>\n          </CardContent>\n        </Card>\n        \n        <Card>\n          <CardContent className=\"pt-6\">\n            <div className=\"flex items-center justify-between\">\n              <div>\n                <p className=\"text-sm font-medium text-gray-600\">Avg Price</p>\n                <p className=\"text-2xl font-bold text-purple-600\">\n                  ₹{portfolioStats.avgPricePerShare.toFixed(0)}\n                </p>\n              </div>\n              <TrendingUp className=\"h-8 w-8 text-purple-600\" />\n            </div>\n          </CardContent>\n        </Card>\n        \n        <Card>\n          <CardContent className=\"pt-6\">\n            <div className=\"flex items-center justify-between\">\n              <div>\n                <p className=\"text-sm font-medium text-gray-600\">Risk Level</p>\n                <Badge \n                  variant={riskMetrics.riskLevel === 'low' ? 'default' : \n                          riskMetrics.riskLevel === 'medium' ? 'secondary' : 'destructive'}\n                  className=\"text-lg font-bold\"\n                >\n                  {riskMetrics.riskLevel.toUpperCase()}\n                </Badge>\n              </div>\n              <PieChart className=\"h-8 w-8 text-orange-600\" />\n            </div>\n          </CardContent>\n        </Card>\n      </div>\n      \n      {/* Sector Allocation */}\n      <Card>\n        <CardHeader>\n          <CardTitle className=\"flex items-center gap-2\">\n            <PieChart className=\"h-5 w-5\" />\n            Sector Allocation\n          </CardTitle>\n        </CardHeader>\n        <CardContent>\n          <div className=\"space-y-3\">\n            {sectorAllocation.map((sector, index) => (\n              <div key={sector.sector} className=\"flex items-center justify-between\">\n                <div className=\"flex items-center gap-3\">\n                  <div \n                    className=\"w-4 h-4 rounded\"\n                    style={{ \n                      backgroundColor: `hsl(${index * 360 / sectorAllocation.length}, 70%, 50%)` \n                    }}\n                  />\n                  <span className=\"font-medium\">{sector.sector}</span>\n                </div>\n                <div className=\"flex items-center gap-4\">\n                  <span className=\"text-sm text-gray-600\">\n                    ₹{sector.value.toLocaleString('en-IN')}\n                  </span>\n                  <span className=\"font-medium\">{sector.percentage.toFixed(1)}%</span>\n                </div>\n              </div>\n            ))}\n          </div>\n        </CardContent>\n      </Card>\n      \n      {/* Risk Analysis */}\n      <Card>\n        <CardHeader>\n          <CardTitle>Risk Analysis</CardTitle>\n        </CardHeader>\n        <CardContent className=\"space-y-4\">\n          <div className=\"grid grid-cols-1 md:grid-cols-2 gap-6\">\n            <div>\n              <p className=\"text-sm font-medium text-gray-600 mb-2\">Concentration Risk</p>\n              <div className=\"flex items-center gap-2\">\n                <Progress \n                  value={riskMetrics.concentrationRisk} \n                  className=\"flex-1\" \n                />\n                <span className=\"text-sm font-medium\">\n                  {riskMetrics.concentrationRisk.toFixed(1)}%\n                </span>\n              </div>\n              <p className=\"text-xs text-gray-500 mt-1\">\n                Largest position: {portfolioStats.largestPosition.ticker}\n              </p>\n            </div>\n            \n            <div>\n              <p className=\"text-sm font-medium text-gray-600 mb-2\">Diversification Score</p>\n              <div className=\"flex items-center gap-2\">\n                <Progress \n                  value={riskMetrics.diversificationScore} \n                  className=\"flex-1\" \n                />\n                <span className=\"text-sm font-medium\">\n                  {riskMetrics.diversificationScore}/100\n                </span>\n              </div>\n              <p className=\"text-xs text-gray-500 mt-1\">\n                Based on number of holdings\n              </p>\n            </div>\n          </div>\n        </CardContent>\n      </Card>\n    </div>\n  )\n  \n  const renderHoldings = () => (\n    <div className=\"space-y-4\">\n      <div className=\"overflow-hidden border rounded-lg\">\n        <div className=\"overflow-x-auto\">\n          <table className=\"w-full\">\n            <thead className=\"bg-gray-50\">\n              <tr>\n                <th className=\"px-4 py-3 text-left text-sm font-medium text-gray-600\">#</th>\n                <th className=\"px-4 py-3 text-left text-sm font-medium text-gray-600\">Ticker</th>\n                <th className=\"px-4 py-3 text-right text-sm font-medium text-gray-600\">Quantity</th>\n                <th className=\"px-4 py-3 text-right text-sm font-medium text-gray-600\">Avg Price</th>\n                <th className=\"px-4 py-3 text-right text-sm font-medium text-gray-600\">Total Value</th>\n                <th className=\"px-4 py-3 text-right text-sm font-medium text-gray-600\">Allocation</th>\n              </tr>\n            </thead>\n            <tbody className=\"divide-y divide-gray-200\">\n              {portfolio.holdings.map((holding, index) => {\n                const totalValue = holding.quantity * holding.avgBuyPrice\n                const allocation = (totalValue / portfolioStats.totalValue) * 100\n                \n                return (\n                  <tr key={index} className=\"hover:bg-gray-50\">\n                    <td className=\"px-4 py-3 text-sm text-gray-500\">{index + 1}</td>\n                    <td className=\"px-4 py-3\">\n                      <span className=\"font-medium text-gray-900\">{holding.ticker}</span>\n                    </td>\n                    <td className=\"px-4 py-3 text-right text-sm text-gray-900\">\n                      {holding.quantity.toLocaleString()}\n                    </td>\n                    <td className=\"px-4 py-3 text-right text-sm text-gray-900\">\n                      ₹{holding.avgBuyPrice.toFixed(2)}\n                    </td>\n                    <td className=\"px-4 py-3 text-right font-medium text-gray-900\">\n                      ₹{totalValue.toLocaleString('en-IN')}\n                    </td>\n                    <td className=\"px-4 py-3 text-right\">\n                      <div className=\"flex items-center justify-end gap-2\">\n                        <div className=\"w-16 bg-gray-200 rounded-full h-2\">\n                          <div \n                            className=\"bg-blue-600 h-2 rounded-full\"\n                            style={{ width: `${Math.min(allocation, 100)}%` }}\n                          />\n                        </div>\n                        <span className=\"text-sm font-medium\">{allocation.toFixed(1)}%</span>\n                      </div>\n                    </td>\n                  </tr>\n                )\n              })}\n            </tbody>\n          </table>\n        </div>\n      </div>\n      \n      {/* Summary */}\n      <Card>\n        <CardContent className=\"pt-6\">\n          <div className=\"grid grid-cols-2 md:grid-cols-4 gap-4 text-center\">\n            <div>\n              <p className=\"text-sm text-gray-600\">Total Shares</p>\n              <p className=\"text-lg font-bold\">{portfolioStats.totalShares.toLocaleString()}</p>\n            </div>\n            <div>\n              <p className=\"text-sm text-gray-600\">Price Range</p>\n              <p className=\"text-lg font-bold\">\n                ₹{portfolioStats.priceRange.min.toFixed(0)} - ₹{portfolioStats.priceRange.max.toFixed(0)}\n              </p>\n            </div>\n            <div>\n              <p className=\"text-sm text-gray-600\">Avg Position Size</p>\n              <p className=\"text-lg font-bold\">\n                ₹{(portfolioStats.totalValue / portfolioStats.holdingsCount).toLocaleString('en-IN', { maximumFractionDigits: 0 })}\n              </p>\n            </div>\n            <div>\n              <p className=\"text-sm text-gray-600\">Largest Position</p>\n              <p className=\"text-lg font-bold\">{portfolioStats.largestPosition.percentage.toFixed(1)}%</p>\n            </div>\n          </div>\n        </CardContent>\n      </Card>\n    </div>\n  )\n  \n  const renderValidation = () => {\n    if (!validationResponse) {\n      return (\n        <div className=\"text-center py-8\">\n          <Info className=\"h-12 w-12 text-gray-400 mx-auto mb-4\" />\n          <p className=\"text-gray-600\">No validation data available</p>\n          <p className=\"text-sm text-gray-500\">Portfolio validation will be performed during submission</p>\n        </div>\n      )\n    }\n    \n    return (\n      <div className=\"space-y-4\">\n        {/* Validation Status */}\n        <Card>\n          <CardContent className=\"pt-6\">\n            <div className=\"flex items-center justify-center gap-4\">\n              {validationResponse.isValid ? (\n                <>\n                  <CheckCircle className=\"h-8 w-8 text-green-600\" />\n                  <div className=\"text-center\">\n                    <p className=\"text-lg font-semibold text-green-700\">Portfolio Validated Successfully</p>\n                    <p className=\"text-sm text-gray-600\">Your portfolio meets all requirements</p>\n                  </div>\n                </>\n              ) : (\n                <>\n                  <AlertTriangle className=\"h-8 w-8 text-red-600\" />\n                  <div className=\"text-center\">\n                    <p className=\"text-lg font-semibold text-red-700\">Validation Issues Found</p>\n                    <p className=\"text-sm text-gray-600\">Please review and address the issues below</p>\n                  </div>\n                </>\n              )}\n            </div>\n          </CardContent>\n        </Card>\n        \n        {/* Validation Errors */}\n        {validationResponse.errors && validationResponse.errors.length > 0 && (\n          <Alert variant=\"destructive\">\n            <AlertTriangle className=\"h-4 w-4\" />\n            <AlertTitle>Validation Errors ({validationResponse.errors.length})</AlertTitle>\n            <AlertDescription>\n              <ul className=\"list-disc list-inside space-y-1 mt-2\">\n                {validationResponse.errors.map((error, index) => (\n                  <li key={index}>\n                    <span className=\"font-medium\">{error.field}:</span> {error.message}\n                  </li>\n                ))}\n              </ul>\n            </AlertDescription>\n          </Alert>\n        )}\n        \n        {/* Validation Warnings */}\n        {validationResponse.warnings && validationResponse.warnings.length > 0 && (\n          <Alert>\n            <Info className=\"h-4 w-4\" />\n            <AlertTitle>Recommendations ({validationResponse.warnings.length})</AlertTitle>\n            <AlertDescription>\n              <ul className=\"list-disc list-inside space-y-1 mt-2\">\n                {validationResponse.warnings.map((warning, index) => (\n                  <li key={index}>{warning}</li>\n                ))}\n              </ul>\n            </AlertDescription>\n          </Alert>\n        )}\n        \n        {/* Validation Summary */}\n        <Card>\n          <CardHeader>\n            <CardTitle>Validation Summary</CardTitle>\n          </CardHeader>\n          <CardContent>\n            <div className=\"grid grid-cols-2 gap-4\">\n              <div>\n                <p className=\"text-sm text-gray-600\">Total Value</p>\n                <p className=\"text-lg font-bold\">\n                  ₹{validationResponse.totalValue?.toLocaleString('en-IN') || 0}\n                </p>\n              </div>\n              <div>\n                <p className=\"text-sm text-gray-600\">Holdings Count</p>\n                <p className=\"text-lg font-bold\">{validationResponse.holdingsCount || 0}</p>\n              </div>\n            </div>\n          </CardContent>\n        </Card>\n      </div>\n    )\n  }\n  \n  // =============================================================================\n  // MAIN RENDER\n  // =============================================================================\n  \n  return (\n    <div className=\"fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4\">\n      <div className=\"bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col\">\n        {/* Header */}\n        <div className=\"flex items-center justify-between p-6 border-b\">\n          <h2 className=\"text-2xl font-bold text-gray-900\">Portfolio Preview</h2>\n          <Button variant=\"ghost\" size=\"sm\" onClick={onClose}>\n            <X className=\"h-5 w-5\" />\n          </Button>\n        </div>\n        \n        {/* Tabs */}\n        <div className=\"px-6 border-b\">\n          <div className=\"flex space-x-8\">\n            {[\n              { id: 'overview', label: 'Overview', icon: PieChart },\n              { id: 'holdings', label: 'Holdings', icon: BarChart3 },\n              { id: 'validation', label: 'Validation', icon: CheckCircle }\n            ].map(tab => {\n              const Icon = tab.icon\n              return (\n                <button\n                  key={tab.id}\n                  onClick={() => setActiveTab(tab.id as any)}\n                  className={`\n                    flex items-center gap-2 py-4 border-b-2 font-medium text-sm transition-colors\n                    ${activeTab === tab.id \n                      ? 'border-blue-500 text-blue-600' \n                      : 'border-transparent text-gray-500 hover:text-gray-700'\n                    }\n                  `}\n                >\n                  <Icon className=\"h-4 w-4\" />\n                  {tab.label}\n                </button>\n              )\n            })}\n          </div>\n        </div>\n        \n        {/* Content */}\n        <div className=\"flex-1 overflow-y-auto p-6\">\n          {activeTab === 'overview' && renderOverview()}\n          {activeTab === 'holdings' && renderHoldings()}\n          {activeTab === 'validation' && renderValidation()}\n        </div>\n        \n        {/* Footer */}\n        <div className=\"flex items-center justify-between p-6 border-t bg-gray-50\">\n          <div className=\"text-sm text-gray-600\">\n            {portfolio.holdings.length} holdings • ₹{portfolioStats.totalValue.toLocaleString('en-IN')} total value\n          </div>\n          \n          <div className=\"flex items-center gap-4\">\n            <Button variant=\"outline\" onClick={onClose}>\n              <Edit className=\"h-4 w-4 mr-2\" />\n              Edit Portfolio\n            </Button>\n            \n            <Button \n              onClick={onConfirm}\n              disabled={isLoading || (validationResponse && !validationResponse.isValid)}\n              className=\"min-w-[140px]\"\n            >\n              {isLoading ? (\n                <div className=\"flex items-center gap-2\">\n                  <div className=\"animate-spin rounded-full h-4 w-4 border-b-2 border-white\"></div>\n                  Processing...\n                </div>\n              ) : (\n                <>\n                  <Send className=\"h-4 w-4 mr-2\" />\n                  Confirm & Analyze\n                </>\n              )}\n            </Button>\n          </div>\n        </div>\n      </div>\n    </div>\n  )\n}\n\nexport default PortfolioPreview"
+/**
+ * Portfolio Preview Component
+ * 
+ * Shows parsed portfolio data for user review before final submission:
+ * - Portfolio summary and statistics
+ * - Detailed holdings breakdown
+ * - Validation results display
+ * - Sector allocation visualization
+ * - Action buttons for edit/confirm
+ * 
+ * Features:
+ * - Comprehensive portfolio overview
+ * - Validation status with errors/warnings
+ * - Interactive holdings table
+ * - Visual allocation charts
+ * - Modal/overlay interface
+ * - Responsive design
+ */
+
+'use client'
+
+import React, { useState, useMemo } from 'react'
+import { 
+  PortfolioInput, 
+  PortfolioValidationResponse,
+  PortfolioHolding 
+} from '../lib/types'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Progress } from '@/components/ui/progress'
+import { 
+  X, 
+  CheckCircle, 
+  AlertTriangle, 
+  Info, 
+  PieChart,
+  TrendingUp,
+  DollarSign,
+  BarChart3,
+  Edit,
+  Send
+} from 'lucide-react'
+
+interface PortfolioPreviewProps {
+  portfolio: PortfolioInput
+  validationResponse?: PortfolioValidationResponse | null
+  onClose: () => void
+  onConfirm: () => void
+  isLoading?: boolean
+}
+
+const PortfolioPreview: React.FC<PortfolioPreviewProps> = ({
+  portfolio,
+  validationResponse,
+  onClose,
+  onConfirm,
+  isLoading = false
+}) => {
+  const [activeTab, setActiveTab] = useState<'overview' | 'holdings' | 'validation'>('overview')
+  
+  const portfolioStats = useMemo(() => {
+    const holdings = portfolio.holdings
+    const totalValue = holdings.reduce((sum, h) => sum + (h.quantity * h.avgBuyPrice), 0)
+    const totalShares = holdings.reduce((sum, h) => sum + h.quantity, 0)
+    const avgPricePerShare = totalShares > 0 ? totalValue / totalShares : 0
+    
+    return {
+      totalValue,
+      totalShares,
+      avgPricePerShare,
+      holdingsCount: holdings.length
+    }
+  }, [portfolio.holdings])
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b">
+          <h2 className="text-2xl font-bold text-gray-900">Portfolio Preview</h2>
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            <X className="h-5 w-5" />
+          </Button>
+        </div>
+        
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6">
+          <div className="space-y-6">
+            {/* Portfolio Summary */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">Total Value</p>
+                      <p className="text-2xl font-bold text-green-600">
+                        ₹{portfolioStats.totalValue.toLocaleString('en-IN')}
+                      </p>
+                    </div>
+                    <DollarSign className="h-8 w-8 text-green-600" />
+                  </div>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">Holdings</p>
+                      <p className="text-2xl font-bold text-blue-600">
+                        {portfolioStats.holdingsCount}
+                      </p>
+                    </div>
+                    <BarChart3 className="h-8 w-8 text-blue-600" />
+                  </div>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">Avg Price</p>
+                      <p className="text-2xl font-bold text-purple-600">
+                        ₹{portfolioStats.avgPricePerShare.toFixed(0)}
+                      </p>
+                    </div>
+                    <TrendingUp className="h-8 w-8 text-purple-600" />
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Holdings Table */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Holdings Breakdown</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Ticker</th>
+                        <th className="px-4 py-3 text-right text-sm font-medium text-gray-600">Quantity</th>
+                        <th className="px-4 py-3 text-right text-sm font-medium text-gray-600">Avg Price</th>
+                        <th className="px-4 py-3 text-right text-sm font-medium text-gray-600">Total Value</th>
+                        <th className="px-4 py-3 text-right text-sm font-medium text-gray-600">Allocation</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {portfolio.holdings.map((holding, index) => {
+                        const totalValue = holding.quantity * holding.avgBuyPrice
+                        const allocation = (totalValue / portfolioStats.totalValue) * 100
+                        
+                        return (
+                          <tr key={index} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 font-medium text-gray-900">{holding.ticker}</td>
+                            <td className="px-4 py-3 text-right text-sm text-gray-900">
+                              {holding.quantity.toLocaleString()}
+                            </td>
+                            <td className="px-4 py-3 text-right text-sm text-gray-900">
+                              ₹{holding.avgBuyPrice.toFixed(2)}
+                            </td>
+                            <td className="px-4 py-3 text-right font-medium text-gray-900">
+                              ₹{totalValue.toLocaleString('en-IN')}
+                            </td>
+                            <td className="px-4 py-3 text-right text-sm font-medium">
+                              {allocation.toFixed(1)}%
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Validation Results */}
+            {validationResponse && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    {validationResponse.isValid ? (
+                      <CheckCircle className="h-5 w-5 text-green-600" />
+                    ) : (
+                      <AlertTriangle className="h-5 w-5 text-red-600" />
+                    )}
+                    Validation Results
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {validationResponse.errors && validationResponse.errors.length > 0 && (
+                    <Alert variant="destructive" className="mb-4">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertTitle>Validation Errors</AlertTitle>
+                      <AlertDescription>
+                        <ul className="list-disc list-inside space-y-1">
+                          {validationResponse.errors.map((error, index) => (
+                            <li key={index}>
+                              <span className="font-medium">{error.field}:</span> {error.message}
+                            </li>
+                          ))}
+                        </ul>
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                  
+                  {validationResponse.warnings && validationResponse.warnings.length > 0 && (
+                    <Alert>
+                      <Info className="h-4 w-4" />
+                      <AlertTitle>Recommendations</AlertTitle>
+                      <AlertDescription>
+                        <ul className="list-disc list-inside space-y-1">
+                          {validationResponse.warnings.map((warning, index) => (
+                            <li key={index}>{warning}</li>
+                          ))}
+                        </ul>
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </div>
+        
+        {/* Footer */}
+        <div className="flex items-center justify-between p-6 border-t bg-gray-50">
+          <div className="text-sm text-gray-600">
+            {portfolio.holdings.length} holdings • ₹{portfolioStats.totalValue.toLocaleString('en-IN')} total value
+          </div>
+          
+          <div className="flex items-center gap-4">
+            <Button variant="outline" onClick={onClose}>
+              <Edit className="h-4 w-4 mr-2" />
+              Edit Portfolio
+            </Button>
+            
+            <Button 
+              onClick={onConfirm}
+                             disabled={isLoading || (validationResponse ? !validationResponse.isValid : false)}
+              className="min-w-[140px]"
+            >
+              {isLoading ? (
+                <div className="flex items-center gap-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  Processing...
+                </div>
+              ) : (
+                <>
+                  <Send className="h-4 w-4 mr-2" />
+                  Confirm & Analyze
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default PortfolioPreview
