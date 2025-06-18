@@ -278,7 +278,7 @@ const CompletePortfolioForm: React.FC<CompletePortfolioFormProps> = ({ className
       
       if (response && response.analysisId) {
         // Navigate to results page with analysis ID
-        router.push(`/results?id=${response.analysisId}`)
+        router.push(`/portfolio/results/${response.analysisId}`)
       } else {
         setSubmitError('Failed to start portfolio analysis')
       }
