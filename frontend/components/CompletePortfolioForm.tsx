@@ -129,7 +129,7 @@ const CompletePortfolioForm: React.FC<CompletePortfolioFormProps> = ({ className
   const [currentHolding, setCurrentHolding] = useState<Partial<PortfolioHolding>>({
     ticker: '',
     quantity: 0,
-    avgBuyPrice: 0
+    avg_buy_price: 0
   })
   
   // Form State
@@ -204,12 +204,12 @@ const CompletePortfolioForm: React.FC<CompletePortfolioFormProps> = ({ className
   }
   
   const handleAddHolding = useCallback(() => {
-    if (currentHolding.ticker && currentHolding.quantity && currentHolding.avgBuyPrice) {
+    if (currentHolding.ticker && currentHolding.quantity && currentHolding.avg_buy_price) {
       const newHolding: PortfolioHolding = {
         ticker: currentHolding.ticker.toUpperCase(),
         quantity: currentHolding.quantity,
-        avgBuyPrice: currentHolding.avgBuyPrice,
-        buyDate: currentHolding.buyDate
+        avg_buy_price: currentHolding.avg_buy_price,
+        buy_date: currentHolding.buy_date
       }
       
       // Check for duplicates
@@ -226,7 +226,7 @@ const CompletePortfolioForm: React.FC<CompletePortfolioFormProps> = ({ className
       setCurrentHolding({
         ticker: '',
         quantity: 0,
-        avgBuyPrice: 0
+        avg_buy_price: 0
       })
       setValidationErrors(prev => {
         const newErrors = { ...prev }
@@ -491,11 +491,11 @@ const CompletePortfolioForm: React.FC<CompletePortfolioFormProps> = ({ className
                     <div>
                       <div className="font-semibold">{holding.ticker}</div>
                       <div className="text-sm text-gray-600">
-                        {holding.quantity} shares @ ₹{holding.avgBuyPrice}
-                        {holding.buyDate && ` (${new Date(holding.buyDate).toLocaleDateString()})`}
+                        {holding.quantity} shares @ ₹{holding.avg_buy_price}
+                        {holding.buy_date && ` (${new Date(holding.buy_date).toLocaleDateString()})`}
                       </div>
                       <div className="text-sm font-medium text-gray-900">
-                        Total: ₹{(holding.quantity * holding.avgBuyPrice).toLocaleString('en-IN')}
+                        Total: ₹{(holding.quantity * holding.avg_buy_price).toLocaleString('en-IN')}
                       </div>
                     </div>
                     <Button
@@ -553,10 +553,10 @@ const CompletePortfolioForm: React.FC<CompletePortfolioFormProps> = ({ className
               <label className="block text-sm font-medium mb-1">Avg. Buy Price (₹) *</label>
               <input
                 type="number"
-                value={currentHolding.avgBuyPrice || ''}
+                value={currentHolding.avg_buy_price || ''}
                 onChange={(e) => setCurrentHolding(prev => ({ 
                   ...prev, 
-                  avgBuyPrice: parseFloat(e.target.value) || 0 
+                  avg_buy_price: parseFloat(e.target.value) || 0 
                 }))}
                 placeholder="Price per share"
                 min="0"
@@ -569,10 +569,10 @@ const CompletePortfolioForm: React.FC<CompletePortfolioFormProps> = ({ className
               <label className="block text-sm font-medium mb-1">Buy Date (Optional)</label>
               <input
                 type="date"
-                value={currentHolding.buyDate || ''}
+                value={currentHolding.buy_date || ''}
                 onChange={(e) => setCurrentHolding(prev => ({ 
                   ...prev, 
-                  buyDate: e.target.value 
+                  buy_date: e.target.value 
                 }))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -587,7 +587,7 @@ const CompletePortfolioForm: React.FC<CompletePortfolioFormProps> = ({ className
           
           <Button 
             onClick={handleAddHolding}
-            disabled={!currentHolding.ticker || !currentHolding.quantity || !currentHolding.avgBuyPrice}
+            disabled={!currentHolding.ticker || !currentHolding.quantity || !currentHolding.avg_buy_price}
             className="w-full md:w-auto"
           >
             Add to Portfolio
@@ -674,7 +674,7 @@ const CompletePortfolioForm: React.FC<CompletePortfolioFormProps> = ({ className
             <div className="text-sm text-gray-600">
               <p><strong>Holdings:</strong> {holdings.length} stocks</p>
               {holdings.length > 0 && (
-                <p><strong>Total Value:</strong> ₹{holdings.reduce((sum, h) => sum + (h.quantity * h.avgBuyPrice), 0).toLocaleString('en-IN')}</p>
+                <p><strong>Total Value:</strong> ₹{holdings.reduce((sum, h) => sum + (h.quantity * h.avg_buy_price), 0).toLocaleString('en-IN')}</p>
               )}
             </div>
           </div>

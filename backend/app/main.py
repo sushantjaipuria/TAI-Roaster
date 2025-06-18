@@ -27,9 +27,23 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import HTTPException
 import uvicorn
 from contextlib import asynccontextmanager
+import logging
 
 from app.api.api import api_router
 from app.core.config import settings
+
+# Configure debug logging for terminal console output
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler()  # Terminal console output only
+    ]
+)
+
+# Set specific loggers for our modules
+logging.getLogger('app.api.endpoints.portfolio').setLevel(logging.DEBUG)
+logging.getLogger('app.services.file_parser').setLevel(logging.DEBUG)
 
 
 @asynccontextmanager

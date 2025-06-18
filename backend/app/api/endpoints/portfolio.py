@@ -20,6 +20,7 @@ from typing import Dict, Optional
 import uuid
 from datetime import datetime
 import asyncio
+import logging
 
 from app.schemas.input import (
     PortfolioInput, 
@@ -36,6 +37,9 @@ from app.core.config import settings
 
 router = APIRouter()
 
+# Configure logger
+logger = logging.getLogger(__name__)
+
 # In-memory storage for demo purposes (in production, use proper database)
 portfolios_storage: Dict[str, PortfolioInput] = {}
 user_profiles_storage: Dict[str, UserProfile] = {}
@@ -46,7 +50,7 @@ file_parser = FileParserService()
 validator = PortfolioValidationService()
 
 
-@router.post("/upload", response_model=FileParseResponse)
+@router.post("/upload")
 async def upload_portfolio_file(
     file: UploadFile = File(...),
     filename: Optional[str] = Form(None),
@@ -58,57 +62,88 @@ async def upload_portfolio_file(
     
     Returns parsed portfolio data with validation results.
     """
+    logger.info(f"📁 Upload request received - filename: {filename}, size: {fileSize}, type: {contentType}")
+    
     try:
         # Create file upload request
         file_request = FileUploadRequest(
             filename=filename or file.filename or "unknown.csv",
-            fileSize=fileSize or 0,
-            contentType=contentType or file.content_type
+            file_size=fileSize or 0,
+            content_type=contentType or file.content_type
         )
+        logger.info(f"📋 FileUploadRequest created: {file_request}")
         
         # Validate file format first
         format_valid, format_errors = await file_parser.validate_file_format(file_request)
+        logger.info(f"🔍 Format validation - valid: {format_valid}, errors: {format_errors}")
+        
         if not format_valid:
-            return FileParseResponse(
-                success=False,
-                portfolio=None,
-                errors=format_errors,
-                warnings=[],
-                rowsProcessed=0,
-                rowsSkipped=0
-            )
+            logger.warning(f"❌ Format validation failed: {format_errors}")
+            return {
+                "success": True,
+                "data": FileParseResponse(
+                    success=False,
+                    portfolio=None,
+                    errors=format_errors,
+                    warnings=[],
+                    rows_processed=0,
+                    rows_skipped=0
+                )
+            }
         
         # Read file content
         content = await file.read()
+        logger.info(f"📖 File content read - length: {len(content)} bytes")
+        logger.debug(f"📄 First 200 chars: {content[:200]}")
+        
         if len(content) == 0:
-            return FileParseResponse(
-                success=False,
-                portfolio=None,
-                errors=["File is empty"],
-                warnings=[],
-                rowsProcessed=0,
-                rowsSkipped=0
-            )
+            logger.error("📭 File is empty")
+            return {
+                "success": True,
+                "data": FileParseResponse(
+                    success=False,
+                    portfolio=None,
+                    errors=["File is empty"],
+                    warnings=[],
+                    rows_processed=0,
+                    rows_skipped=0
+                )
+            }
         
         # Parse file
+        logger.info("🔄 Starting file parsing...")
         parse_response = await file_parser.parse_file(content, file_request)
+        logger.info(f"✅ Parse response - success: {parse_response.success}, rows processed: {parse_response.rows_processed}")
+        
+        if parse_response.errors:
+            logger.warning(f"⚠️ Parse errors: {parse_response.errors}")
+        if parse_response.warnings:
+            logger.info(f"⚠️ Parse warnings: {parse_response.warnings}")
         
         # Store portfolio if parsing was successful
         if parse_response.success and parse_response.portfolio:
             session_id = str(uuid.uuid4())
             portfolios_storage[session_id] = parse_response.portfolio
+            logger.info(f"💾 Portfolio stored with session_id: {session_id}")
         
-        return parse_response
+        return {
+            "success": True,
+            "data": parse_response
+        }
         
     except Exception as e:
-        return FileParseResponse(
-            success=False,
-            portfolio=None,
-            errors=[f"Upload failed: {str(e)}"],
-            warnings=[],
-            rowsProcessed=0,
-            rowsSkipped=0
-        )
+        logger.error(f"❌ Upload failed with exception: {str(e)}", exc_info=True)
+        return {
+            "success": True,
+            "data": FileParseResponse(
+                success=False,
+                portfolio=None,
+                errors=[f"Upload failed: {str(e)}"],
+                warnings=[],
+                rows_processed=0,
+                rows_skipped=0
+            )
+        }
 
 
 @router.post("/validate", response_model=PortfolioValidationResponse)
@@ -128,11 +163,11 @@ async def validate_portfolio(
         # Validate portfolio
         validation_response = await validator.validate_portfolio(
             request.portfolio,
-            request.userProfile
+            request.user_profile
         )
         
         # Cache validation result
-        cache_key = str(hash(str(request.portfolio.holdings) + str(request.userProfile)))
+        cache_key = str(hash(str(request.portfolio.holdings) + str(request.user_profile)))
         validation_cache[cache_key] = validation_response
         
         return validation_response
@@ -238,7 +273,7 @@ async def analyze_portfolio(
         # First validate the portfolio
         validation_response = await validator.validate_portfolio(
             request.portfolio,
-            request.userProfile
+            request.user_profile
         )
         
         if not validation_response.isValid:
@@ -253,7 +288,7 @@ async def analyze_portfolio(
         
         # Store request for processing
         portfolios_storage[analysis_id] = request.portfolio
-        user_profiles_storage[analysis_id] = request.userProfile
+        user_profiles_storage[analysis_id] = request.user_profile
         
         # Return mock analysis (in real implementation, this would trigger actual analysis)
         return {
@@ -335,7 +370,7 @@ async def process_bulk_upload(
         await asyncio.sleep(2)
         
         # Store the user profile
-        user_profiles_storage[process_id] = request.userProfile
+        user_profiles_storage[process_id] = request.user_profile
         
         # In real implementation:
         # - Parse uploaded file

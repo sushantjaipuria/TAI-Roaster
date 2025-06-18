@@ -167,8 +167,8 @@ const InputForm: React.FC<InputFormProps> = ({
       errors.push({ field: 'quantity', message: 'Quantity must be a positive number' })
     }
     
-    if (!holding.avgBuyPrice || holding.avgBuyPrice <= 0) {
-      errors.push({ field: 'avgBuyPrice', message: 'Average buy price must be positive' })
+    if (!holding.avg_buy_price || holding.avg_buy_price <= 0) {
+      errors.push({ field: 'avg_buy_price', message: 'Average buy price must be positive' })
     }
     
     // Check for duplicate ticker
@@ -218,9 +218,9 @@ const InputForm: React.FC<InputFormProps> = ({
     const newHolding: PortfolioHolding = {
       ticker: currentHolding.ticker!.toUpperCase().trim(),
       quantity: currentHolding.quantity!,
-      avgBuyPrice: currentHolding.avgBuyPrice!,
-      buyDate: currentHolding.buyDate,
-      currentPrice: currentHolding.currentPrice
+      avg_buy_price: currentHolding.avg_buy_price!,
+      buy_date: currentHolding.buy_date,
+      current_price: currentHolding.current_price
     }
     
     if (editingIndex !== null) {
@@ -327,7 +327,7 @@ const InputForm: React.FC<InputFormProps> = ({
   // =============================================================================
   
   const totalValue = holdings.reduce((sum, holding) => 
-    sum + (holding.quantity * holding.avgBuyPrice), 0
+    sum + (holding.quantity * holding.avg_buy_price), 0
   )
   
   const currentHoldingErrors = validateHolding(currentHolding)
@@ -409,18 +409,18 @@ const InputForm: React.FC<InputFormProps> = ({
                 </div>
                 
                 <div>
-                  <Label htmlFor="avgBuyPrice">Avg Buy Price (₹) *</Label>
+                  <Label htmlFor="avg_buy_price">Avg Buy Price (₹) *</Label>
                   <Input
-                    id="avgBuyPrice"
+                    id="avg_buy_price"
                     type="number"
                     step="0.01"
-                    value={currentHolding.avgBuyPrice || ''}
+                    value={currentHolding.avg_buy_price || ''}
                     onChange={(e) => setCurrentHolding(prev => ({ 
                       ...prev, 
-                      avgBuyPrice: parseFloat(e.target.value) || 0 
+                      avg_buy_price: parseFloat(e.target.value) || 0 
                     }))}
                     placeholder="Price per share"
-                    className={currentHoldingErrors.find(e => e.field === 'avgBuyPrice') ? 'border-red-500' : ''}
+                    className={currentHoldingErrors.find(e => e.field === 'avg_buy_price') ? 'border-red-500' : ''}
                   />
                 </div>
                 
@@ -472,11 +472,11 @@ const InputForm: React.FC<InputFormProps> = ({
                             <span className="text-gray-600">{holding.quantity.toLocaleString()} shares</span>
                           </div>
                           <div>
-                            <span className="text-gray-600">₹{holding.avgBuyPrice.toFixed(2)}</span>
+                            <span className="text-gray-600">₹{holding.avg_buy_price.toFixed(2)}</span>
                           </div>
                           <div>
                             <span className="font-medium">
-                              ₹{(holding.quantity * holding.avgBuyPrice).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                              ₹{(holding.quantity * holding.avg_buy_price).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                             </span>
                           </div>
                         </div>

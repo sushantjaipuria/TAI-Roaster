@@ -411,7 +411,7 @@ const FileUploadSection: React.FC<FileUploadSectionProps> = ({
                 <AlertTitle>File parsed successfully!</AlertTitle>
                 <AlertDescription>
                   Found {state.portfolio.holdings.length} holdings in your portfolio.
-                  Total value: ₹{state.portfolio.holdings.reduce((sum, h) => sum + (h.quantity * h.avgBuyPrice), 0).toLocaleString('en-IN')}
+                  Total value: ₹{state.portfolio.holdings.reduce((sum, h) => sum + (h.quantity * h.avg_buy_price), 0).toLocaleString('en-IN')}
                 </AlertDescription>
               </Alert>
               
@@ -427,9 +427,9 @@ const FileUploadSection: React.FC<FileUploadSectionProps> = ({
                     <div key={index} className="flex items-center justify-between py-2 px-3 bg-white rounded text-sm">
                       <span className="font-medium">{holding.ticker}</span>
                       <span>{holding.quantity.toLocaleString()} shares</span>
-                      <span>₹{holding.avgBuyPrice.toFixed(2)}</span>
+                      <span>₹{holding.avg_buy_price.toFixed(2)}</span>
                       <span className="font-medium">
-                        ₹{(holding.quantity * holding.avgBuyPrice).toLocaleString('en-IN')}
+                        ₹{(holding.quantity * holding.avg_buy_price).toLocaleString('en-IN')}
                       </span>
                     </div>
                   ))}

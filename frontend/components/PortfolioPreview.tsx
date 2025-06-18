@@ -62,7 +62,7 @@ const PortfolioPreview: React.FC<PortfolioPreviewProps> = ({
   
   const portfolioStats = useMemo(() => {
     const holdings = portfolio.holdings
-    const totalValue = holdings.reduce((sum, h) => sum + (h.quantity * h.avgBuyPrice), 0)
+    const totalValue = holdings.reduce((sum, h) => sum + (h.quantity * h.avg_buy_price), 0)
     const totalShares = holdings.reduce((sum, h) => sum + h.quantity, 0)
     const avgPricePerShare = totalShares > 0 ? totalValue / totalShares : 0
     
@@ -152,7 +152,7 @@ const PortfolioPreview: React.FC<PortfolioPreviewProps> = ({
                     </thead>
                     <tbody className="divide-y divide-gray-200">
                       {portfolio.holdings.map((holding, index) => {
-                        const totalValue = holding.quantity * holding.avgBuyPrice
+                        const totalValue = holding.quantity * holding.avg_buy_price
                         const allocation = (totalValue / portfolioStats.totalValue) * 100
                         
                         return (
@@ -162,7 +162,7 @@ const PortfolioPreview: React.FC<PortfolioPreviewProps> = ({
                               {holding.quantity.toLocaleString()}
                             </td>
                             <td className="px-4 py-3 text-right text-sm text-gray-900">
-                              ₹{holding.avgBuyPrice.toFixed(2)}
+                              ₹{holding.avg_buy_price.toFixed(2)}
                             </td>
                             <td className="px-4 py-3 text-right font-medium text-gray-900">
                               ₹{totalValue.toLocaleString('en-IN')}
