@@ -137,3 +137,9 @@ temp_data/
 .env.local
 .env.production
 secrets/
+
+# Backend-specific directories
+backend/uploads/
+backend/processed/
+backend/temp/
+backend/tests/
