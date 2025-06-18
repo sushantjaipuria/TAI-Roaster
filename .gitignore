@@ -140,6 +140,6 @@ secrets/
 
 # Backend-specific directories
 backend/uploads/
-# backend/processed/
+backend/processed/
 backend/temp/
 backend/tests/
