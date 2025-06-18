@@ -34,15 +34,13 @@ from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, date
 from dataclasses import dataclass
 from enum import Enum
-import logging
 
 from app.schemas.input import (
     PortfolioHolding, PortfolioInput, FileParseResponse,
     FileUploadRequest
 )
 
-# Configure logger
-logger = logging.getLogger(__name__)
+
 
 
 class ParseError(Exception):
@@ -126,8 +124,6 @@ class FileParserService:
         Returns:
             Detailed file parse response with portfolio data and errors
         """
-        logger.info(f"🔄 Starting parse_file for: {file_request.filename}")
-        
         self.warnings = []
         self.rows_processed = 0
         self.rows_skipped = 0
@@ -135,19 +131,14 @@ class FileParserService:
         try:
             # Determine file type and parse
             filename = file_request.filename
-            logger.info(f"📁 Processing file: {filename}")
             
             if filename.lower().endswith('.csv'):
-                logger.info("📊 Parsing as CSV")
                 df = self._parse_csv(file_content)
             elif filename.lower().endswith(('.xlsx', '.xls')):
-                logger.info("📈 Parsing as Excel")
                 df = self._parse_excel(file_content)
             elif filename.lower().endswith('.tsv'):
-                logger.info("📋 Parsing as TSV")
                 df = self._parse_tsv(file_content)
             else:
-                logger.error(f"❌ Unsupported file type: {filename}")
                 return FileParseResponse(
                     success=False,
                     portfolio=None,
@@ -157,12 +148,8 @@ class FileParserService:
                     rows_skipped=0
                 )
             
-            logger.info(f"📊 DataFrame created - shape: {df.shape}, columns: {list(df.columns)}")
-            logger.debug(f"📄 DataFrame head:\n{df.head()}")
-            
             # Validate minimum data requirements
             if df.empty:
-                logger.error("📭 DataFrame is empty")
                 return FileParseResponse(
                     success=False,
                     portfolio=None,
@@ -173,15 +160,9 @@ class FileParserService:
                 )
             
             # Clean and validate data
-            logger.info("🧹 Starting data cleaning...")
             df_cleaned, cleaning_errors = self._clean_dataframe(df)
-            logger.info(f"✅ Cleaning complete - cleaned shape: {df_cleaned.shape}, errors: {len(cleaning_errors)}")
-            
-            if cleaning_errors:
-                logger.warning(f"⚠️ Cleaning errors: {cleaning_errors}")
             
             if df_cleaned.empty:
-                logger.error("📭 No valid data after cleaning")
                 return FileParseResponse(
                     success=False,
                     portfolio=None,
@@ -192,18 +173,11 @@ class FileParserService:
                 )
             
             # Convert to PortfolioInput
-            logger.info("🔄 Converting to PortfolioInput...")
             portfolio_input, conversion_errors = self._dataframe_to_portfolio_input(df_cleaned)
-            logger.info(f"✅ Conversion complete - holdings: {len(portfolio_input.holdings) if portfolio_input else 0}")
-            
-            if conversion_errors:
-                logger.warning(f"⚠️ Conversion errors: {conversion_errors}")
             
             # Final result
             all_errors = cleaning_errors + conversion_errors
             success = portfolio_input and portfolio_input.holdings
-            
-            logger.info(f"🎯 Final result - success: {success}, total errors: {len(all_errors)}")
             
             if portfolio_input and portfolio_input.holdings:
                 return FileParseResponse(
@@ -225,7 +199,6 @@ class FileParserService:
                 )
                 
         except Exception as e:
-            logger.error(f"❌ Parse failed with exception: {str(e)}", exc_info=True)
             return FileParseResponse(
                 success=False,
                 portfolio=None,
@@ -237,14 +210,6 @@ class FileParserService:
     
     def _parse_csv(self, file_content: bytes) -> pd.DataFrame:
         """Parse CSV file content with multiple encoding support."""
-        logger.info(f"📊 Parsing CSV - content length: {len(file_content)} bytes")
-        
-        # Show raw content sample
-        try:
-            sample_content = file_content[:500].decode('utf-8', errors='ignore')
-            logger.debug(f"📄 Raw CSV sample:\n{sample_content}")
-        except Exception as e:
-            logger.warning(f"⚠️ Could not decode sample content: {e}")
         
         encodings = ['utf-8', 'utf-8-sig', 'iso-8859-1', 'cp1252', 'latin1']
         separators = [',', ';', '\t']
@@ -252,11 +217,7 @@ class FileParserService:
         for encoding in encodings:
             for separator in separators:
                 try:
-                    logger.debug(f"🔄 Trying encoding: {encoding}, separator: '{separator}'")
                     content_str = file_content.decode(encoding)
-                    
-                    # Show decoded content sample
-                    logger.debug(f"📄 Decoded sample (first 300 chars):\n{content_str[:300]}")
                     
                     df = pd.read_csv(
                         io.StringIO(content_str),
@@ -265,20 +226,13 @@ class FileParserService:
                         na_values=['', 'NA', 'N/A', 'null', 'NULL', '-']
                     )
                     
-                    logger.info(f"✅ Successfully parsed with {encoding}/{separator} - shape: {df.shape}")
-                    logger.debug(f"📊 Parsed columns: {list(df.columns)}")
-                    
                     # Check if parsing was successful (has multiple columns)
                     if len(df.columns) >= 3:
                         return df
-                    else:
-                        logger.debug(f"⚠️ Not enough columns: {len(df.columns)}")
                         
                 except (UnicodeDecodeError, pd.errors.Error) as e:
-                    logger.debug(f"❌ Failed with {encoding}/{separator}: {str(e)}")
                     continue
         
-        logger.error("❌ Unable to parse CSV with any supported encoding/separator")
         raise ParseError("Unable to parse CSV file with supported encodings and separators")
     
     def _parse_excel(self, file_content: bytes) -> pd.DataFrame:
@@ -319,42 +273,27 @@ class FileParserService:
     
     def _clean_dataframe(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
         """Clean and validate DataFrame with detailed error reporting."""
-        logger.info(f"🧹 Starting dataframe cleaning - input shape: {df.shape}")
-        logger.debug(f"📊 Original columns: {list(df.columns)}")
-        logger.debug(f"📄 First few rows:\n{df.head()}")
-        
-        # Show raw data for first few rows
-        for idx, row in df.head(3).iterrows():
-            logger.debug(f"📄 Row {idx} raw data: {dict(row)}")
         
         errors = []
         original_rows = len(df)
         
         # Remove completely empty rows
         df = df.dropna(how='all')
-        logger.info(f"🧹 Removed empty rows: {original_rows} -> {len(df)}")
         if len(df) < original_rows:
             self.rows_skipped += (original_rows - len(df))
         
         # Normalize column names
         original_columns = list(df.columns)
         df.columns = df.columns.astype(str).str.lower().str.strip().str.replace(' ', '_')
-        logger.info(f"🏷️ Column mapping: {dict(zip(original_columns, df.columns))}")
         
         # Map columns to standard names
         column_mapping = self._detect_columns(df.columns)
-        logger.info(f"🗺️ Detected column mapping: {column_mapping}")
         
         if not column_mapping:
-            logger.error("❌ Could not identify required columns")
             errors.append("Could not identify required columns (ticker, quantity, avg_buy_price)")
             return pd.DataFrame(), errors
         
         df = df.rename(columns=column_mapping)
-        logger.info(f"🏷️ Final columns after mapping: {list(df.columns)}")
-        
-        # Show data after column mapping
-        logger.debug(f"📄 Data after column mapping:\n{df.head()}")
         
         # Check required columns
         required_columns = ['ticker', 'quantity', 'avg_buy_price']
@@ -544,10 +483,8 @@ class FileParserService:
     
     def _clean_price(self, price_value: Any, row_idx: int, column: str) -> Optional[float]:
         """Clean and validate price values."""
-        logger.debug(f"🔢 Cleaning price - row {row_idx}, column {column}, value: '{price_value}' (type: {type(price_value)})")
         
         if pd.isna(price_value):
-            logger.debug(f"🔢 Price is NaN for row {row_idx}")
             return None
         
         try:
@@ -555,17 +492,13 @@ class FileParserService:
             
             # Handle string prices with currency symbols and commas
             if isinstance(price_value, str):
-                logger.debug(f"🔢 Processing string price: '{price_value}'")
                 # Remove currency symbols, commas, and underscores
                 price_clean = re.sub(r'[₹$,\s_]', '', price_value.strip())
-                logger.debug(f"🔢 After regex cleaning: '{price_clean}'")
                 price_value = price_clean
             
             price = float(price_value)
-            logger.debug(f"🔢 Converted to float: {price}")
             
             if price <= 0:
-                logger.warning(f"🔢 Invalid price <= 0: {original_value} -> {price}")
                 self.warnings.append(ParseWarning(
                     row=row_idx,
                     column=column,
@@ -576,7 +509,6 @@ class FileParserService:
             
             # Reasonable price range check (₹0.01 to ₹1,00,000)
             if price < 0.01 or price > 100000:
-                logger.warning(f"🔢 Price outside expected range: {price}")
                 self.warnings.append(ParseWarning(
                     row=row_idx,
                     column=column,
@@ -586,11 +518,9 @@ class FileParserService:
                 ))
             
             result = round(price, 2)
-            logger.debug(f"🔢 Final price result: {result}")
             return result
             
         except (ValueError, TypeError) as e:
-            logger.error(f"🔢 Failed to parse price '{price_value}': {str(e)}")
             self.warnings.append(ParseWarning(
                 row=row_idx,
                 column=column,

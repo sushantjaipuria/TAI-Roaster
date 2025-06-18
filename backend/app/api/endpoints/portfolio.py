@@ -20,7 +20,6 @@ from typing import Dict, Optional
 import uuid
 from datetime import datetime
 import asyncio
-import logging
 
 from app.schemas.input import (
     PortfolioInput, 
@@ -38,8 +37,7 @@ from app.utils.file_handler import file_handler
 
 router = APIRouter()
 
-# Configure logger
-logger = logging.getLogger(__name__)
+
 
 # In-memory storage for demo purposes (in production, use proper database)
 portfolios_storage: Dict[str, PortfolioInput] = {}
@@ -63,8 +61,6 @@ async def upload_portfolio_file(
     
     Returns parsed portfolio data with validation results.
     """
-    logger.info(f"📁 Upload request received - filename: {filename}, size: {fileSize}, type: {contentType}")
-    
     try:
         # Create file upload request
         file_request = FileUploadRequest(
@@ -72,14 +68,11 @@ async def upload_portfolio_file(
             file_size=fileSize or 0,
             content_type=contentType or file.content_type
         )
-        logger.info(f"📋 FileUploadRequest created: {file_request}")
         
         # Validate file format first
         format_valid, format_errors = await file_parser.validate_file_format(file_request)
-        logger.info(f"🔍 Format validation - valid: {format_valid}, errors: {format_errors}")
         
         if not format_valid:
-            logger.warning(f"❌ Format validation failed: {format_errors}")
             return {
                 "success": True,
                 "data": FileParseResponse(
@@ -94,11 +87,8 @@ async def upload_portfolio_file(
         
         # Read file content
         content = await file.read()
-        logger.info(f"📖 File content read - length: {len(content)} bytes")
-        logger.debug(f"📄 First 200 chars: {content[:200]}")
         
         if len(content) == 0:
-            logger.error("📭 File is empty")
             return {
                 "success": True,
                 "data": FileParseResponse(
@@ -116,7 +106,6 @@ async def upload_portfolio_file(
         # =================================================================
         saved_file_path = None
         try:
-            logger.info("💾 Attempting to save uploaded file...")
             save_success, file_path, save_error = await file_handler.save_uploaded_file(
                 content, 
                 file_request.filename
@@ -124,38 +113,27 @@ async def upload_portfolio_file(
             
             if save_success:
                 saved_file_path = file_path
-                logger.info(f"✅ File saved successfully: {saved_file_path}")
-            else:
-                logger.warning(f"⚠️ File saving failed (continuing with processing): {save_error}")
-                # Note: We continue processing even if file saving fails
+            # Note: We continue processing even if file saving fails
                 
         except Exception as save_exception:
-            logger.error(f"❌ File saving error (continuing with processing): {str(save_exception)}")
             # Note: File saving failure doesn't stop the upload process
+            pass
         # =================================================================
         
         # Parse file
-        logger.info("🔄 Starting file parsing...")
         parse_response = await file_parser.parse_file(content, file_request)
-        logger.info(f"✅ Parse response - success: {parse_response.success}, rows processed: {parse_response.rows_processed}")
-        
-        if parse_response.errors:
-            logger.warning(f"⚠️ Parse errors: {parse_response.errors}")
-        if parse_response.warnings:
-            logger.info(f"⚠️ Parse warnings: {parse_response.warnings}")
         
         # Store portfolio if parsing was successful
         if parse_response.success and parse_response.portfolio:
             session_id = str(uuid.uuid4())
             portfolios_storage[session_id] = parse_response.portfolio
-            logger.info(f"💾 Portfolio stored with session_id: {session_id}")
             
             # =================================================================
             # NEW: Log file location for reference (optional enhancement)
             # =================================================================
             if saved_file_path:
-                logger.info(f"📁 Original file available at: {saved_file_path}")
                 # Note: We could store this path with the portfolio for future reference
+                pass
             # =================================================================
         
         return {
@@ -164,7 +142,6 @@ async def upload_portfolio_file(
         }
         
     except Exception as e:
-        logger.error(f"❌ Upload failed with exception: {str(e)}", exc_info=True)
         return {
             "success": True,
             "data": FileParseResponse(
