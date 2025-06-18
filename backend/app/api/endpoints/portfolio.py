@@ -34,6 +34,7 @@ from app.schemas.input import (
 from app.services.file_parser import FileParserService
 from app.services.portfolio_validator import PortfolioValidationService
 from app.core.config import settings
+from app.utils.file_handler import file_handler
 
 router = APIRouter()
 
@@ -110,6 +111,29 @@ async def upload_portfolio_file(
                 )
             }
         
+        # =================================================================
+        # NEW: Save uploaded file to disk (non-breaking addition)
+        # =================================================================
+        saved_file_path = None
+        try:
+            logger.info("💾 Attempting to save uploaded file...")
+            save_success, file_path, save_error = await file_handler.save_uploaded_file(
+                content, 
+                file_request.filename
+            )
+            
+            if save_success:
+                saved_file_path = file_path
+                logger.info(f"✅ File saved successfully: {saved_file_path}")
+            else:
+                logger.warning(f"⚠️ File saving failed (continuing with processing): {save_error}")
+                # Note: We continue processing even if file saving fails
+                
+        except Exception as save_exception:
+            logger.error(f"❌ File saving error (continuing with processing): {str(save_exception)}")
+            # Note: File saving failure doesn't stop the upload process
+        # =================================================================
+        
         # Parse file
         logger.info("🔄 Starting file parsing...")
         parse_response = await file_parser.parse_file(content, file_request)
@@ -125,6 +149,14 @@ async def upload_portfolio_file(
             session_id = str(uuid.uuid4())
             portfolios_storage[session_id] = parse_response.portfolio
             logger.info(f"💾 Portfolio stored with session_id: {session_id}")
+            
+            # =================================================================
+            # NEW: Log file location for reference (optional enhancement)
+            # =================================================================
+            if saved_file_path:
+                logger.info(f"📁 Original file available at: {saved_file_path}")
+                # Note: We could store this path with the portfolio for future reference
+            # =================================================================
         
         return {
             "success": True,
@@ -174,14 +206,14 @@ async def validate_portfolio(
         
     except Exception as e:
         return PortfolioValidationResponse(
-            isValid=False,
+            is_valid=False,
             errors=[{
                 "field": "general",
                 "message": f"Validation failed: {str(e)}"
             }],
             warnings=[],
-            totalValue=None,
-            holdingsCount=None
+            total_value=None,
+            holdings_count=None
         )
 
 
@@ -276,7 +308,7 @@ async def analyze_portfolio(
             request.user_profile
         )
         
-        if not validation_response.isValid:
+        if not validation_response.is_valid:
             return {
                 "success": False,
                 "message": "Portfolio validation failed",
