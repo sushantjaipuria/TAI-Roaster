@@ -14,13 +14,12 @@ from app.models.analysis import (
     AnalysisResultResponse,
     AnalysisStatus
 )
-from app.services.mock_analysis import MockAnalysisService
 from app.api.endpoints.onboarding import sessions_storage
 from app.api.endpoints.portfolio import portfolios_storage
 
 router = APIRouter()
 
-# In-memory storage for analysis requests
+# In-memory storage for analysis requests (kept for compatibility)
 analysis_requests: Dict[str, AnalysisRequest] = {}
 analysis_results: Dict[str, any] = {}
 
@@ -53,53 +52,67 @@ def camel_to_snake(data):
         return data
 
 
-@router.post("/predict", response_model=AnalysisRequestResponse)
+def load_demo_analysis():
+    """
+    Load the demo portfolio analysis data.
+    """
+    processed_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "processed")
+    json_file_path = os.path.join(processed_dir, "analysis_demo-portfolio-analysis.json")
+    
+    if os.path.exists(json_file_path):
+        try:
+            with open(json_file_path, 'r') as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=500, detail="Invalid demo analysis JSON file format")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to load demo analysis file: {str(e)}")
+    else:
+        raise HTTPException(status_code=500, detail="Demo analysis file not found")
+
+
+@router.post("/analysis/request", response_model=AnalysisRequestResponse)
 async def request_analysis(
     background_tasks: BackgroundTasks,
-    session_id: str
+    session_id: str,
+    analysis_type: str = "comprehensive"
 ):
     """
-    Request portfolio analysis.
-    
-    This triggers the analysis process for the user's portfolio based on their
-    risk profile and investment preferences.
+    Request a new portfolio analysis.
+    Now returns demo analysis immediately instead of processing in background.
     """
     try:
-        # Validate session exists
+        # Check if session exists
         if session_id not in sessions_storage:
-            raise HTTPException(status_code=404, detail="User session not found")
+            raise HTTPException(status_code=404, detail="Session not found")
         
-        # Validate portfolio exists
         if session_id not in portfolios_storage:
-            raise HTTPException(status_code=404, detail="Portfolio not found")
+            raise HTTPException(status_code=404, detail="Portfolio data not found for session")
         
         # Generate request ID
         request_id = str(uuid.uuid4())
         
-        # Create analysis request
-        analysis_request = AnalysisRequest(
+        # Create analysis request (for compatibility)
+        request = AnalysisRequest(
             request_id=request_id,
             session_id=session_id,
-            status=AnalysisStatus.PENDING,
-            created_at=datetime.now(),
-            progress=0
+            status=AnalysisStatus.COMPLETED,  # Immediately mark as completed
+            progress=100,
+            completed_at=datetime.now()
         )
         
         # Store request
-        analysis_requests[request_id] = analysis_request
+        analysis_requests[request_id] = request
         
-        # Start analysis in background
-        background_tasks.add_task(
-            perform_analysis,
-            request_id,
-            session_id
-        )
+        # Load and store demo analysis results immediately
+        demo_analysis = load_demo_analysis()
+        analysis_results[request_id] = demo_analysis
         
         return AnalysisRequestResponse(
             success=True,
-            message="Analysis request submitted successfully",
             request_id=request_id,
-            estimated_time=30  # 30 seconds estimated time
+            message="Analysis completed using demo data",
+            estimated_processing_time="0 seconds"
         )
         
     except HTTPException:
@@ -119,18 +132,13 @@ async def get_analysis_status(request_id: str):
         
         request = analysis_requests[request_id]
         
-        # Calculate estimated remaining time
-        estimated_remaining = None
-        if request.status == AnalysisStatus.PROCESSING:
-            remaining_progress = 100 - request.progress
-            estimated_remaining = int(remaining_progress * 0.3)  # Rough estimate
-        
+        # Since we now return demo data immediately, all analyses are completed
         return AnalysisStatusResponse(
             success=True,
             request_id=request_id,
-            status=request.status,
-            progress=request.progress,
-            estimated_remaining=estimated_remaining,
+            status=AnalysisStatus.COMPLETED,
+            progress=100,
+            estimated_remaining=None,
             error_message=request.error_message
         )
         
@@ -144,60 +152,20 @@ async def get_analysis_status(request_id: str):
 async def get_analysis_results(request_id: str):
     """
     Get the results of a completed analysis.
+    Always returns demo portfolio analysis data.
     """
     try:
-        # First, try the normal workflow (existing functionality)
-        if request_id in analysis_requests:
-            request = analysis_requests[request_id]
-            
-            if request.status != AnalysisStatus.COMPLETED:
-                if request.status == AnalysisStatus.FAILED:
-                    return AnalysisResultResponse(
-                        success=False,
-                        request_id=request_id,
-                        error_message=request.error_message
-                    )
-                else:
-                    raise HTTPException(
-                        status_code=409, 
-                        detail=f"Analysis not completed yet. Current status: {request.status}"
-                    )
-            
-            # Get analysis results from memory
-            if request_id in analysis_results:
-                analysis = analysis_results[request_id]
-                
-                return AnalysisResultResponse(
-                    success=True,
-                    request_id=request_id,
-                    analysis=analysis,
-                    completed_at=request.completed_at
-                )
+        # Load demo analysis data
+        demo_analysis = load_demo_analysis()
         
-        # Fallback: Always serve demo portfolio analysis
-        processed_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "processed")
-        json_file_path = os.path.join(processed_dir, "analysis_demo-portfolio-analysis.json")
-        
-        if os.path.exists(json_file_path):
-            try:
-                with open(json_file_path, 'r') as f:
-                    analysis_data = json.load(f)
-                
-                # Return raw response for JSON fallback (bypass Pydantic validation)
-                from fastapi.responses import JSONResponse
-                return JSONResponse(content={
-                    "success": True,
-                    "request_id": request_id,
-                    "analysis": analysis_data,  # Keep original camelCase for frontend
-                    "completed_at": datetime.now().isoformat()
-                })
-            except json.JSONDecodeError:
-                raise HTTPException(status_code=500, detail="Invalid JSON file format")
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=f"Failed to load analysis file: {str(e)}")
-        
-        # Not found in either location
-        raise HTTPException(status_code=404, detail="Analysis request not found")
+        # Return demo analysis data for any request
+        from fastapi.responses import JSONResponse
+        return JSONResponse(content={
+            "success": True,
+            "request_id": request_id,
+            "analysis": demo_analysis,  # Keep original camelCase for frontend
+            "completed_at": datetime.now().isoformat()
+        })
         
     except HTTPException:
         raise
@@ -227,91 +195,4 @@ async def delete_analysis(request_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to delete analysis: {str(e)}")
-
-
-@router.get("/analysis/{request_id}/retry")
-async def retry_analysis(request_id: str, background_tasks: BackgroundTasks):
-    """
-    Retry a failed analysis.
-    """
-    try:
-        if request_id not in analysis_requests:
-            raise HTTPException(status_code=404, detail="Analysis request not found")
-        
-        request = analysis_requests[request_id]
-        
-        if request.status not in [AnalysisStatus.FAILED]:
-            raise HTTPException(status_code=409, detail="Analysis can only be retried if it failed")
-        
-        # Reset request status
-        request.status = AnalysisStatus.PENDING
-        request.progress = 0
-        request.error_message = None
-        analysis_requests[request_id] = request
-        
-        # Start analysis in background
-        background_tasks.add_task(
-            perform_analysis,
-            request_id,
-            request.session_id
-        )
-        
-        return {
-            "success": True,
-            "message": "Analysis retry initiated",
-            "request_id": request_id
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to retry analysis: {str(e)}")
-
-
-async def perform_analysis(request_id: str, session_id: str):
-    """
-    Background task to perform portfolio analysis.
-    """
-    try:
-        # Update status to processing
-        request = analysis_requests[request_id]
-        request.status = AnalysisStatus.PROCESSING
-        request.progress = 10
-        analysis_requests[request_id] = request
-        
-        # Get user profile and portfolio
-        user_session = sessions_storage[session_id]
-        portfolio = portfolios_storage[session_id]
-        
-        # Initialize mock analysis service
-        analysis_service = MockAnalysisService()
-        
-        # Simulate analysis process with progress updates
-        for progress in [25, 50, 75, 90]:
-            await asyncio.sleep(2)  # Simulate processing time
-            request.progress = progress
-            analysis_requests[request_id] = request
-        
-        # Perform analysis
-        analysis_result = await analysis_service.analyze_portfolio(
-            portfolio=portfolio,
-            user_profile=user_session.user_profile
-        )
-        
-        # Store results
-        analysis_results[request_id] = analysis_result
-        
-        # Update request status
-        request.status = AnalysisStatus.COMPLETED
-        request.progress = 100
-        request.completed_at = datetime.now()
-        analysis_requests[request_id] = request
-        
-    except Exception as e:
-        # Handle analysis failure
-        request = analysis_requests.get(request_id)
-        if request:
-            request.status = AnalysisStatus.FAILED
-            request.error_message = str(e)
-            analysis_requests[request_id] = request 
+        raise HTTPException(status_code=500, detail=f"Failed to delete analysis: {str(e)}") 

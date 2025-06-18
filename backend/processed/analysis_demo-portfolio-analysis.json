@@ -7826,13 +7826,6 @@
         "Large Cap": 65,
         "Mid Cap": 25,
         "Small Cap": 10
-      },
-      "concentration": {
-        "top3Holdings": 42.5,
-        "top5Holdings": 58.2,
-        "top10Holdings": 78.9,
-        "herfindahlIndex": 0.18,
-        "isConcentrated": false
       }
     },
     "recommended": {
@@ -7855,6 +7848,52 @@
         "Medium": 50,
         "High": 20
       }
+    },
+    "concentration": {
+      "top3Holdings": 42.5,
+      "top5Holdings": 58.2,
+      "top10Holdings": 78.9,
+      "herfindahlIndex": 0.18,
+      "isConcentrated": false,
+      "topHoldingsPct": 58.2,
+      "sectorConcentration": [
+        {
+          "sector": "Technology",
+          "allocation": 32,
+          "isOverweight": true,
+          "benchmark": 25
+        },
+        {
+          "sector": "Financial Services", 
+          "allocation": 22,
+          "isOverweight": true,
+          "benchmark": 20
+        },
+        {
+          "sector": "Healthcare",
+          "allocation": 18,
+          "isOverweight": false,
+          "benchmark": 18
+        },
+        {
+          "sector": "Consumer Goods",
+          "allocation": 12,
+          "isOverweight": false,
+          "benchmark": 15
+        }
+      ],
+      "riskFlags": [
+        {
+          "type": "CONCENTRATION",
+          "message": "High concentration in Technology sector (32%)",
+          "severity": "MEDIUM"
+        },
+        {
+          "type": "EXPOSURE",
+          "message": "Overweight in growth-oriented sectors",
+          "severity": "LOW"
+        }
+      ]
     },
     "correlation": {
       "stocks": [
@@ -7949,7 +7988,29 @@
           -0.27623403954297815
         ]
       ],
-      "averageCorrelation": 0.69389005606459
+      "averageCorrelation": 0.69389005606459,
+      "highlyCorrelatedPairs": [
+        {
+          "stock1": "RELIANCE",
+          "stock2": "WIPRO",
+          "correlation": 0.8995
+        },
+        {
+          "stock1": "WIPRO",
+          "stock2": "MARUTI",
+          "correlation": 0.7508
+        },
+        {
+          "stock1": "TCS",
+          "stock2": "INFY",
+          "correlation": 0.8742
+        },
+        {
+          "stock1": "BHARTIARTL",
+          "stock2": "RELIANCE",
+          "correlation": 0.8888
+        }
+      ]
     }
   },
   "stocks": [
@@ -8684,7 +8745,33 @@
         "Market volatility",
         "Sector concentration risk"
       ]
-    }
+    },
+    "proTips": [
+      {
+        "category": "ALLOCATION",
+        "tip": "Consider reducing Technology sector allocation to 25% for better diversification",
+        "impact": "HIGH",
+        "effort": "EASY"
+      },
+      {
+        "category": "RISK",
+        "tip": "Add defensive stocks or sectors to reduce portfolio volatility",
+        "impact": "MEDIUM",
+        "effort": "MODERATE"
+      },
+      {
+        "category": "COST",
+        "tip": "Review expense ratios of holdings to optimize cost efficiency",
+        "impact": "LOW",
+        "effort": "EASY"
+      },
+      {
+        "category": "TAX",
+        "tip": "Consider tax-loss harvesting opportunities in underperforming stocks",
+        "impact": "MEDIUM",
+        "effort": "MODERATE"
+      }
+    ]
   },
   "actionPlan": {
     "summary": {
