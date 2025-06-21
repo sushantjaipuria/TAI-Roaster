@@ -1,40 +1,14 @@
 import React, { useState } from 'react'
 import { TrendingUp, Info, BarChart3, Target } from 'lucide-react'
 import { ResultsComponentProps, TimeframePerformance } from '../../lib/types-results'
-import LineChart from '../charts/LineChart'
 
 export default function PerformanceMetrics({ data }: ResultsComponentProps) {
   const [selectedTimeframe, setSelectedTimeframe] = useState<string>('1Y')
-  const [showBenchmark, setShowBenchmark] = useState(true)
 
   // Get performance data for selected timeframe
   const selectedPerformance = data.performanceMetrics.find(
     p => p.timeframe === selectedTimeframe
   ) || data.performanceMetrics[0]
-
-  // Prepare chart data from historical data
-  const chartData = data.historicalData.map(point => ({
-    date: point.date,
-    portfolio: point.cumulativeReturn,
-    benchmark: ((point.benchmarkValue - 100000) / 100000) * 100 // Convert to percentage
-  }))
-
-  // Line configurations for the chart
-  const lineConfigs = [
-    {
-      dataKey: 'portfolio',
-      name: 'Portfolio',
-      color: '#3B82F6',
-      strokeWidth: 3
-    },
-    ...(showBenchmark ? [{
-      dataKey: 'benchmark',
-      name: data.benchmarkName,
-      color: '#10B981',
-      strokeWidth: 2,
-      strokeDasharray: '5 5'
-    }] : [])
-  ]
 
   // Metric definitions for tooltips
   const metricDefinitions: { [key: string]: string } = {
@@ -78,59 +52,81 @@ export default function PerformanceMetrics({ data }: ResultsComponentProps) {
         <div>
           <h2 className="text-xl font-bold text-gray-900">📈 Performance Metrics</h2>
           <p className="text-sm text-gray-600 mt-1">
-            Multi-dimensional risk-adjusted return assessment
+            Portfolio returns vs {data.benchmarkName} comparison
           </p>
-        </div>
-        
-        {/* Benchmark Toggle */}
-        <div className="flex items-center gap-3">
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={showBenchmark}
-              onChange={(e) => setShowBenchmark(e.target.checked)}
-              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-            />
-            Show {data.benchmarkName}
-          </label>
         </div>
       </div>
 
       {/* Timeframe Selector */}
       <div className="flex flex-wrap gap-2 mb-6">
-        {data.performanceMetrics.map((performance) => (
-          <button
-            key={performance.timeframe}
-            onClick={() => setSelectedTimeframe(performance.timeframe)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              selectedTimeframe === performance.timeframe
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            {performance.timeframe}
-          </button>
-        ))}
+        {['1M', '1Y'].map((timeframe) => {
+          // Only show button if we have data for this timeframe
+          const hasData = data.performanceMetrics.some(p => p.timeframe === timeframe)
+          if (!hasData) return null
+          
+          return (
+            <button
+              key={timeframe}
+              onClick={() => setSelectedTimeframe(timeframe)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                selectedTimeframe === timeframe
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              {timeframe}
+            </button>
+          )
+        })}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Performance Chart */}
-        <div className="lg:col-span-2">
-          <div className="bg-gray-50 rounded-lg p-6">
-            <LineChart
-              data={chartData}
-              lines={lineConfigs}
-              title={`Performance vs ${data.benchmarkName}`}
-              height={400}
-              formatYAxis={(value) => `${value.toFixed(1)}%`}
-              formatTooltip={(value, name) => `${value.toFixed(2)}%`}
-              yAxisLabel="Cumulative Return (%)"
-            />
-          </div>
-        </div>
+      {/* Return Comparison Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        {['1M', '3M', '1Y'].map((timeframe) => {
+          const performance = data.performanceMetrics.find(p => p.timeframe === timeframe)
+          if (!performance) return null
+          
+          const portfolioReturn = performance.returns
+          const benchmarkReturn = performance.benchmarkReturns
+          const outperformance = performance.outperformance
+          const isOutperforming = outperformance >= 0
+          
+          return (
+            <div key={timeframe} className="bg-white border border-gray-200 rounded-lg p-4">
+              <div className="text-center">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">{timeframe} Returns</h3>
+                
+                {/* Portfolio Return */}
+                <div className="mb-3">
+                  <div className="text-sm text-gray-600">Portfolio</div>
+                  <div className={`text-2xl font-bold ${portfolioReturn >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {portfolioReturn >= 0 ? '+' : ''}{portfolioReturn.toFixed(1)}%
+                  </div>
+                </div>
+                
+                {/* Benchmark Return */}
+                <div className="mb-3">
+                  <div className="text-sm text-gray-600">{data.benchmarkName}</div>
+                  <div className={`text-xl font-medium ${benchmarkReturn >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {benchmarkReturn >= 0 ? '+' : ''}{benchmarkReturn.toFixed(1)}%
+                  </div>
+                </div>
+                
+                {/* Outperformance */}
+                <div className={`text-sm font-medium px-2 py-1 rounded ${
+                  isOutperforming ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                }`}>
+                  {isOutperforming ? '+' : ''}{outperformance.toFixed(1)}% vs benchmark
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
 
+      <div className="grid grid-cols-1 gap-8">
         {/* Metrics Table */}
-        <div className="lg:col-span-1">
+        <div className="max-w-md mx-auto w-full">
           <div className="bg-gray-50 rounded-lg p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">
               {selectedTimeframe} Metrics
@@ -240,10 +236,10 @@ export default function PerformanceMetrics({ data }: ResultsComponentProps) {
             <TrendingUp className="w-6 h-6 text-green-600 mx-auto mb-2" />
             <div className="text-sm font-medium text-green-800">Best Period</div>
             <div className="text-lg font-bold text-green-600">
-              {Math.max(...data.performanceMetrics.map(p => p.returns)).toFixed(1)}%
+              {Math.max(...data.performanceMetrics.filter(p => ['1M', '1Y'].includes(p.timeframe)).map(p => p.returns)).toFixed(1)}%
             </div>
             <div className="text-xs text-green-600">
-              {data.performanceMetrics.find(p => p.returns === Math.max(...data.performanceMetrics.map(p => p.returns)))?.timeframe}
+              {data.performanceMetrics.filter(p => ['1M', '1Y'].includes(p.timeframe)).find(p => p.returns === Math.max(...data.performanceMetrics.filter(p => ['1M', '1Y'].includes(p.timeframe)).map(p => p.returns)))?.timeframe}
             </div>
           </div>
 
@@ -252,7 +248,7 @@ export default function PerformanceMetrics({ data }: ResultsComponentProps) {
             <Target className="w-6 h-6 text-blue-600 mx-auto mb-2" />
             <div className="text-sm font-medium text-blue-800">Best Sharpe</div>
             <div className="text-lg font-bold text-blue-600">
-              {Math.max(...data.performanceMetrics.map(p => p.metrics.sharpeRatio)).toFixed(2)}
+              {Math.max(...data.performanceMetrics.filter(p => ['1M', '1Y'].includes(p.timeframe)).map(p => p.metrics.sharpeRatio)).toFixed(2)}
             </div>
             <div className="text-xs text-blue-600">Risk-adjusted</div>
           </div>
@@ -262,7 +258,10 @@ export default function PerformanceMetrics({ data }: ResultsComponentProps) {
             <BarChart3 className="w-6 h-6 text-purple-600 mx-auto mb-2" />
             <div className="text-sm font-medium text-purple-800">Avg Outperformance</div>
             <div className="text-lg font-bold text-purple-600">
-              {(data.performanceMetrics.reduce((sum, p) => sum + p.outperformance, 0) / data.performanceMetrics.length).toFixed(1)}%
+              {(() => {
+              const filteredMetrics = data.performanceMetrics.filter(p => ['1M', '1Y'].includes(p.timeframe))
+              return (filteredMetrics.reduce((sum, p) => sum + p.outperformance, 0) / filteredMetrics.length).toFixed(1)
+            })()}%
             </div>
             <div className="text-xs text-purple-600">vs {data.benchmarkName}</div>
           </div>

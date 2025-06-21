@@ -43,54 +43,7 @@ function MetricCard({ title, value, change, trend, subtitle, icon, color = 'blue
   )
 }
 
-// Simple Radar Chart (using CSS for now, can be replaced with Recharts later)
-function SimpleRadarChart({ data }: { data: { label: string; value: number }[] }) {
-  return (
-    <div className="relative w-64 h-64 mx-auto">
-      <div className="absolute inset-0 border-2 border-gray-200 rounded-full"></div>
-      <div className="absolute inset-4 border border-gray-200 rounded-full"></div>
-      <div className="absolute inset-8 border border-gray-200 rounded-full"></div>
-      <div className="absolute inset-12 border border-gray-200 rounded-full"></div>
-      
-      {/* Center point */}
-      <div className="absolute top-1/2 left-1/2 w-2 h-2 bg-blue-600 rounded-full transform -translate-x-1/2 -translate-y-1/2"></div>
-      
-      {/* Data labels */}
-      <div className="absolute inset-0">
-        {data.map((item, index) => {
-          const angle = (index * 90) - 90 // Start from top, go clockwise
-          const radian = (angle * Math.PI) / 180
-          const radius = 110
-          const x = Math.cos(radian) * radius + 128
-          const y = Math.sin(radian) * radius + 128
-          
-          return (
-            <div
-              key={item.label}
-              className="absolute text-xs font-medium text-gray-700 transform -translate-x-1/2 -translate-y-1/2"
-              style={{ left: x, top: y }}
-            >
-              <div className="text-center">
-                <div>{item.label}</div>
-                <div className="text-blue-600 font-bold">{item.value}</div>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-      
-      {/* Score overlay */}
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-xs text-gray-500 uppercase tracking-wide">Overall</div>
-          <div className="text-2xl font-bold text-blue-600">
-            {Math.round(data.reduce((sum, item) => sum + item.value, 0) / data.length)}
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
+
 
 export default function PortfolioSummaryCard({ data }: ResultsComponentProps) {
   // Calculate derived metrics
@@ -101,14 +54,6 @@ export default function PortfolioSummaryCard({ data }: ResultsComponentProps) {
 
   // Get latest performance metrics
   const latestPerformance = data.performanceMetrics[data.performanceMetrics.length - 1]
-
-  // Radar chart data
-  const radarData = [
-    { label: 'Return', value: Math.min(100, Math.max(0, absoluteReturnPct + 50)) },
-    { label: 'Risk', value: 100 - (latestPerformance?.metrics.volatility || 20) },
-    { label: 'Diversification', value: data.diversificationScore },
-    { label: 'Cost', value: data.rating.costEfficiency }
-  ]
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-6">
@@ -128,9 +73,9 @@ export default function PortfolioSummaryCard({ data }: ResultsComponentProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 gap-8">
         {/* KPI Cards */}
-        <div className="lg:col-span-2">
+        <div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Total Invested */}
             <MetricCard
@@ -189,39 +134,7 @@ export default function PortfolioSummaryCard({ data }: ResultsComponentProps) {
           </div>
         </div>
 
-        {/* Radar Chart */}
-        <div className="lg:col-span-1">
-          <div className="text-center mb-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Portfolio Health</h3>
-            <p className="text-sm text-gray-600">Multi-dimensional assessment</p>
-          </div>
-          
-          <SimpleRadarChart data={radarData} />
-          
-          {/* Quick Insights */}
-          <div className="mt-6 space-y-2">
-            <div className="text-sm">
-              <span className="font-medium text-gray-700">Risk vs Return:</span>
-              <span className={`ml-2 ${absoluteReturnPct >= 10 ? 'text-green-600' : 'text-gray-600'}`}>
-                {absoluteReturnPct >= 10 ? 'Favorable' : 'Moderate'}
-              </span>
-            </div>
-            
-            <div className="text-sm">
-              <span className="font-medium text-gray-700">Benchmark:</span>
-              <span className={`ml-2 ${(latestPerformance?.outperformance || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {(latestPerformance?.outperformance || 0) >= 0 ? 'Outperforming' : 'Underperforming'}
-              </span>
-            </div>
-            
-            <div className="text-sm">
-              <span className="font-medium text-gray-700">Quality:</span>
-              <span className={`ml-2 ${data.rating.returnQuality >= 75 ? 'text-green-600' : 'text-gray-600'}`}>
-                {data.rating.returnQuality >= 75 ? 'High Quality' : 'Moderate Quality'}
-              </span>
-            </div>
-          </div>
-        </div>
+
       </div>
 
       {/* Traffic Light Summary */}
