@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+import os
 try:
     import openai
     OPENAI_AVAILABLE = True
@@ -77,9 +78,19 @@ class LLMTradingExpert:
         self.model = model
         
         if provider == "openai":
-            self.client = openai.OpenAI()
+            if not OPENAI_AVAILABLE:
+                raise ValueError("OpenAI package not available")
+            api_key = os.getenv('OPENAI_API_KEY')
+            if not api_key:
+                raise ValueError("OPENAI_API_KEY environment variable not set")
+            self.client = openai.OpenAI(api_key=api_key)
         elif provider == "anthropic":
-            self.client = Anthropic()
+            if not ANTHROPIC_AVAILABLE:
+                raise ValueError("Anthropic package not available")
+            api_key = os.getenv('ANTHROPIC_API_KEY')
+            if not api_key:
+                raise ValueError("ANTHROPIC_API_KEY environment variable not set")
+            self.client = Anthropic(api_key=api_key)
         else:
             raise ValueError(f"Unsupported LLM provider: {provider}")
     

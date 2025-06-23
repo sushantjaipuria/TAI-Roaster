@@ -7,6 +7,10 @@ import yfinance as yf
 import time
 import os
 
+# Load environment variables to ensure API keys are available
+from dotenv import load_dotenv
+load_dotenv()
+
 try:
     from backend.app.schemas.enhanced_analysis import StockRecommendation
     from backend.app.schemas.output import (

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 import logging
 from datetime import datetime, timedelta
+from dataclasses import asdict
 
 # Add project root to Python path
 project_root = Path(__file__).parent.parent.parent.parent
@@ -64,10 +65,20 @@ class MarketDataService:
             return self.cache[cache_key]
         
         try:
-            # Get data using intelligence module provider
-            stock_data = await asyncio.to_thread(
-                self.provider.get_stock_data, ticker
-            )
+            # Direct async call to get market data
+            market_data = await self.provider.get_stock_data(ticker)
+            
+            # Convert RealTimeMarketData to dict for compatibility
+            if hasattr(market_data, '__dict__'):
+                stock_data = asdict(market_data)
+            else:
+                stock_data = market_data
+            
+            # Add compatibility fields for existing code
+            stock_data['change'] = stock_data.get('day_change', 0.0)
+            stock_data['change_percent'] = stock_data.get('day_change_percent', 0.0)
+            stock_data['data_source'] = 'real_time'
+            stock_data['timestamp'] = datetime.now().isoformat()
             
             # Cache the result
             self.cache[cache_key] = stock_data

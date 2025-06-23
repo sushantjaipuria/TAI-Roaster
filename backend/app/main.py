@@ -21,6 +21,11 @@ Usage:
 - Accessed by frontend at configured API_URL
 """
 
+# Load environment variables first
+from dotenv import load_dotenv
+import os
+load_dotenv()  # Load .env file from project root
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -66,7 +71,7 @@ async def lifespan(app: FastAPI):
             
             # Models are loaded automatically when model_manager is imported
             model_info = model_manager.get_model_info()
-            print(f"✅ ML Models Status: {model_info['total_models']} models, {model_info['total_predictors']} predictors")
+            print(f"✅ ML Models Status: {model_info['total_models']} models")
             
             # Initialize services
             if intelligence_service.initialized:
