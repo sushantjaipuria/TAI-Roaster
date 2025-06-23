@@ -143,3 +143,4 @@ backend/uploads/
 backend/processed/
 backend/temp/
 backend/tests/
+backend/logs/transparency_logs
