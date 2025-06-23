@@ -27,7 +27,6 @@ except ImportError as e:
 
 from app.schemas.input import PortfolioInput
 from app.models.onboarding import UserProfileRequest as UserProfile
-from app.schemas.output import AnalysisResponse
 
 logger = logging.getLogger(__name__)
 
