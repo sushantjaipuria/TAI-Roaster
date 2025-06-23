@@ -28,9 +28,28 @@ from fastapi.exceptions import HTTPException
 import uvicorn
 from contextlib import asynccontextmanager
 import logging
+import sys
+from pathlib import Path
 
 from app.api.api import api_router
 from app.core.config import settings
+
+# Add project root to Python path for intelligence module
+project_root = Path(__file__).parent.parent.parent  # Go up to TAI-Roaster root
+if str(project_root) not in sys.path:
+    sys.path.append(str(project_root))
+    print(f"✅ Added project root to Python path: {project_root}")
+
+# Try to import intelligence components
+try:
+    from app.core.ml_models import model_manager
+    from app.services.intelligence_service import intelligence_service
+    from app.services.market_data_service import market_data_service
+    INTELLIGENCE_MODULE_AVAILABLE = True
+    print("✅ Intelligence module imports successful")
+except ImportError as e:
+    print(f"⚠️  Intelligence module not available: {e}")
+    INTELLIGENCE_MODULE_AVAILABLE = False
 
 
 
@@ -39,9 +58,52 @@ from app.core.config import settings
 async def lifespan(app: FastAPI):
     # Startup
     print("🚀 TAI Roaster Backend Starting...")
+    
+    # Initialize intelligence components if available
+    if INTELLIGENCE_MODULE_AVAILABLE:
+        try:
+            print("🤖 Loading ML models...")
+            
+            # Models are loaded automatically when model_manager is imported
+            model_info = model_manager.get_model_info()
+            print(f"✅ ML Models Status: {model_info['total_models']} models, {model_info['total_predictors']} predictors")
+            
+            # Initialize services
+            if intelligence_service.initialized:
+                print("✅ Intelligence Service initialized")
+            else:
+                print("⚠️  Intelligence Service initialization failed")
+                
+            if market_data_service.initialized:
+                print("✅ Market Data Service initialized")
+            else:
+                print("⚠️  Market Data Service initialization failed")
+                
+            # Store in app state for access in endpoints
+            app.state.model_manager = model_manager
+            app.state.intelligence_service = intelligence_service
+            app.state.market_data_service = market_data_service
+            
+        except Exception as e:
+            print(f"❌ Error initializing intelligence components: {e}")
+    else:
+        print("⚠️  Intelligence module not available - running in basic mode")
+    
+    print("✅ TAI Roaster Backend Ready!")
+    
     yield
+    
     # Shutdown
     print("🛑 TAI Roaster Backend Shutting down...")
+    
+    # Cleanup if needed
+    if INTELLIGENCE_MODULE_AVAILABLE:
+        try:
+            if hasattr(market_data_service, 'clear_cache'):
+                market_data_service.clear_cache()
+                print("✅ Market data cache cleared")
+        except Exception as e:
+            print(f"⚠️  Error during cleanup: {e}")
 
 
 app = FastAPI(

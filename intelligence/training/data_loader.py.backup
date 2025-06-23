@@ -1,0 +1,432 @@
+import os
+from dotenv import load_dotenv
+import yfinance as yf
+import pandas as pd
+from datetime import datetime, timedelta
+from pathlib import Path
+import re
+
+# Load environment variables
+load_dotenv()
+
+# Try to import Dhan
+try:
+    from dhanhq import dhanhq
+    DHAN_AVAILABLE = True
+except ImportError:
+    DHAN_AVAILABLE = False
+    print("[WARNING] DhanHQ not available, using yFinance only")
+
+# Global variable to cache the NSE equity mapping
+_nse_mapping_cache = None
+
+def calculate_warmup_period(safety_buffer: int = 2) -> int:
+    """
+    Calculate required warmup period by scanning feature_builder.py for maximum period values
+    
+    Returns 0 if calculation fails (graceful fallback to original behavior)
+    
+    Args:
+        safety_buffer: Extra days to add beyond the maximum period found (default: 2)
+        
+    Returns:
+        int: Total warmup days needed (max_period + safety_buffer), or 0 if calculation fails
+    """
+    try:
+        # Find the feature_builder.py file
+        feature_builder_path = Path(__file__).parent / "feature_builder.py"
+        
+        # Read the file content
+        with open(feature_builder_path, 'r') as f:
+            content = f.read()
+        
+        # Search for all period values using regex patterns
+        periods_found = []
+        
+        # Pattern 1: Find "timeperiod=NUMBER" (like timeperiod=200)
+        timeperiod_matches = re.findall(r'timeperiod\s*=\s*(\d+)', content)
+        periods_found.extend([int(x) for x in timeperiod_matches])
+        
+        # Pattern 2: Find "SMA_NUMBER" (like SMA_200, SMA_50)
+        sma_matches = re.findall(r'SMA_(\d+)', content)
+        periods_found.extend([int(x) for x in sma_matches])
+        
+        # Pattern 3: Find "EMA_NUMBER" (like EMA_200, EMA_26)
+        ema_matches = re.findall(r'EMA_(\d+)', content)
+        periods_found.extend([int(x) for x in ema_matches])
+        
+        # Pattern 4: Find "rolling(window=NUMBER)" (like rolling(window=50))
+        rolling_matches = re.findall(r'rolling\s*\(\s*window\s*=\s*(\d+)', content)
+        periods_found.extend([int(x) for x in rolling_matches])
+        
+        # Pattern 5: Find "rolling(NUMBER)" (like rolling(20))
+        rolling_simple_matches = re.findall(r'rolling\s*\(\s*(\d+)', content)
+        periods_found.extend([int(x) for x in rolling_simple_matches])
+        
+        # Find the maximum period
+        if periods_found:
+            unique_periods = list(set(periods_found))
+            max_period = max(unique_periods)
+            total_warmup = max_period + safety_buffer
+            
+            print(f"[INFO] Warmup analysis found periods: {sorted(unique_periods)}")
+            print(f"[INFO] Maximum period: {max_period} days")
+            print(f"[INFO] Total warmup period: {total_warmup} days ({max_period} + {safety_buffer} safety)")
+            
+            return total_warmup
+        else:
+            print(f"[WARNING] No periods found in feature_builder.py")
+            return 0
+        
+    except FileNotFoundError:
+        print(f"[WARNING] feature_builder.py not found, no warmup applied")
+        return 0
+        
+    except Exception as e:
+        print(f"[WARNING] Error calculating warmup period: {e}")
+        print(f"[INFO] Continuing without warmup (original behavior)")
+        return 0
+
+def load_nse_equity_mapping():
+    """Load NSE equity mapping from CSV file"""
+    global _nse_mapping_cache
+    
+    if _nse_mapping_cache is not None:
+        return _nse_mapping_cache
+    
+    try:
+        # Get the path to the mapping file
+        current_dir = Path(__file__).parent.parent
+        mapping_file = current_dir / "data" / "dhan_nse_equity_mapping.csv"
+        
+        if not mapping_file.exists():
+            print(f"[WARNING] NSE equity mapping file not found: {mapping_file}")
+            return {}
+        
+        # Load the mapping
+        df = pd.read_csv(mapping_file)
+        
+        # Create mapping dictionary from trading_symbol to security_id
+        mapping = {}
+        for _, row in df.iterrows():
+            symbol = row['trading_symbol'].strip().upper()
+            security_id = str(row['security_id']).strip()
+            mapping[symbol] = {
+                'security_id': security_id,
+                'company_name': row['company_name'],
+                'lot_size': row['lot_size'],
+                'tick_size': row['tick_size']
+            }
+        
+        _nse_mapping_cache = mapping
+        print(f"[INFO] Loaded {len(mapping)} NSE equity mappings")
+        return mapping
+        
+    except Exception as e:
+        print(f"[ERROR] Failed to load NSE equity mapping: {e}")
+        return {}
+
+def get_dhan_security_id(ticker):
+    """Convert ticker symbol to Dhan security ID"""
+    mapping = load_nse_equity_mapping()
+    
+    # Clean the ticker (remove .NS suffix and convert to uppercase)
+    clean_ticker = ticker.replace('.NS', '').upper().strip()
+    
+    if clean_ticker in mapping:
+        return mapping[clean_ticker]['security_id']
+    
+    print(f"[WARNING] Security ID not found for ticker: {clean_ticker}")
+    return None
+
+def get_dhan_client():
+    """Get Dhan client if available"""
+    if not DHAN_AVAILABLE:
+        return None
+    
+    try:
+        token = os.getenv('DHAN_ACCESS_TOKEN')
+        client_id = os.getenv('DHAN_CLIENT_ID')
+        
+        if token and client_id:
+            return dhanhq(client_id, token)
+        else:
+            print("[WARNING] Dhan credentials not found in environment")
+            return None
+    except Exception as e:
+        print(f"[WARNING] Dhan client creation failed: {e}")
+        return None
+
+def fetch_from_dhan(ticker, start_date, end_date, timeframe="1day"):
+    """
+    Fetch data from Dhan with configurable timeframe
+    Uses security_id and appropriate API method based on timeframe
+    """
+    client = get_dhan_client()
+    if not client:
+        return None
+    
+    try:
+        # Get security ID for the ticker
+        security_id = get_dhan_security_id(ticker)
+        if not security_id:
+            print(f"[WARNING] Cannot fetch {ticker} from Dhan: Security ID not found")
+            return None
+        
+        # Convert dates to proper format
+        from_date = datetime.strptime(start_date, '%Y-%m-%d').strftime('%Y-%m-%d')
+        to_date = datetime.strptime(end_date, '%Y-%m-%d').strftime('%Y-%m-%d')
+        
+        print(f"[INFO] Fetching Dhan data for {ticker} (ID: {security_id}) from {from_date} to {to_date}, timeframe: {timeframe}")
+        
+        # Map our timeframe to Dhan API timeframe
+        dhan_timeframe_map = {
+            "1min": "1",
+            "5min": "5", 
+            "15min": "15",
+            "1hour": "60",
+            "1day": "1D"
+        }
+        
+        dhan_timeframe = dhan_timeframe_map.get(timeframe, "1D")
+        
+        # Use different Dhan API method based on timeframe
+        if timeframe == "1day":
+            # Use existing daily data method
+            historical_data = client.historical_daily_data(
+                security_id=security_id,
+                exchange_segment="NSE_EQ",
+                instrument_type="EQUITY",
+                from_date=from_date,
+                to_date=to_date
+            )
+        else:
+            # Use intraday data method for other timeframes
+            try:
+                historical_data = client.intraday_minute_data(
+                    security_id=security_id,
+                    exchange_segment="NSE_EQ",
+                    instrument_type="EQUITY",
+                    interval=dhan_timeframe,
+                    from_date=from_date,
+                    to_date=to_date
+                )
+            except AttributeError:
+                # Fallback to daily data if intraday method not available
+                print(f"[WARNING] Intraday data not available for {ticker}, using daily data")
+                historical_data = client.historical_daily_data(
+                    security_id=security_id,
+                    exchange_segment="NSE_EQ",
+                    instrument_type="EQUITY",
+                    from_date=from_date,
+                    to_date=to_date
+                )
+        
+        if not historical_data:
+            print(f"[WARNING] No data returned from Dhan for {ticker}")
+            return None
+        
+        # Handle Dhan v2.0 response format which includes status and data
+        actual_data = historical_data
+        if isinstance(historical_data, dict) and 'data' in historical_data:
+            actual_data = historical_data['data']
+            if not actual_data:
+                print(f"[WARNING] Empty data section in Dhan response for {ticker}")
+                return None
+        
+        # Parse the response - Dhan v2.0 returns data in arrays
+        if all(key in actual_data for key in ['open', 'high', 'low', 'close', 'timestamp']):
+            # Create DataFrame from the arrays
+            df_data = {
+                'Open': actual_data['open'],
+                'High': actual_data['high'],
+                'Low': actual_data['low'],
+                'Close': actual_data['close'],
+                'Volume': actual_data.get('volume', [0] * len(actual_data['open']))
+            }
+            
+            # Convert timestamps (Dhan uses epoch format)
+            timestamps = []
+            for ts in actual_data['timestamp']:
+                try:
+                    # Convert Dhan timestamp to datetime
+                    dt = client.convert_to_date_time(ts)
+                    timestamps.append(dt)
+                except:
+                    # Fallback: treat as Unix timestamp
+                    timestamps.append(datetime.fromtimestamp(ts))
+            
+            df = pd.DataFrame(df_data, index=timestamps)
+            df.index.name = 'Date'
+            
+            # Ensure data types are correct
+            for col in ['Open', 'High', 'Low', 'Close', 'Volume']:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
+            
+            # Remove any rows with NaN values
+            df = df.dropna()
+            
+            if len(df) > 0:
+                print(f"[✓] Fetched {len(df)} rows from Dhan for {ticker}")
+                return df
+            else:
+                print(f"[WARNING] No valid data after cleaning for {ticker}")
+                return None
+        
+        else:
+            print(f"[WARNING] Unexpected data format from Dhan for {ticker}")
+            print(f"[DEBUG] Response structure: {type(historical_data)}")
+            print(f"[DEBUG] Top-level keys: {list(historical_data.keys()) if isinstance(historical_data, dict) else 'Not a dict'}")
+            if isinstance(historical_data, dict) and 'data' in historical_data:
+                data_section = historical_data['data']
+                print(f"[DEBUG] Data section type: {type(data_section)}")
+                if isinstance(data_section, dict):
+                    print(f"[DEBUG] Data section keys: {list(data_section.keys())}")
+                elif isinstance(data_section, list) and len(data_section) > 0:
+                    print(f"[DEBUG] Data section list length: {len(data_section)}")
+                    print(f"[DEBUG] First item type: {type(data_section[0])}")
+            return None
+        
+    except Exception as e:
+        print(f"[WARNING] Dhan fetch failed for {ticker}: {e}")
+        return None
+
+def fetch_from_yfinance(ticker, start_date, end_date):
+    """Fetch data from yFinance (existing logic with improvements)"""
+    try:
+        # Ensure .NS suffix for yFinance
+        yf_ticker = ticker if ticker.endswith('.NS') else f"{ticker}.NS"
+        
+        data = yf.download(
+            tickers=yf_ticker,
+            start=start_date,
+            end=end_date,
+            group_by="ticker",
+            auto_adjust=True,
+            progress=False,
+            threads=True
+        )
+        
+        if data.empty:
+            return None
+            
+        # Handle single ticker response
+        if len([ticker]) == 1:
+            if isinstance(data.columns, pd.MultiIndex):
+                df = data[yf_ticker] if yf_ticker in data.columns.levels[0] else data
+            else:
+                df = data.copy()
+        else:
+            df = data[yf_ticker] if yf_ticker in data.columns.levels[0] else data
+        
+        # Rename Adj Close to Close if needed
+        if "Adj Close" in df.columns:
+            df = df.rename(columns={"Adj Close": "Close"})
+        
+        # Ensure Volume column exists
+        if "Volume" not in df.columns:
+            df["Volume"] = 0
+        
+        print(f"[✓] Fetched {len(df)} rows from yFinance for {ticker}")
+        return df
+        
+    except Exception as e:
+        print(f"[WARNING] yFinance fetch failed for {ticker}: {e}")
+        return None
+
+def download_nse_data(tickers: list[str], start="2020-01-01", end="2024-01-01", timeframe: str = "1day") -> dict[str, pd.DataFrame]:
+    """
+    Download NSE data with automatic warmup calculation
+    
+    This function automatically calculates warmup period from feature_builder.py
+    and adjusts the start date to ensure sufficient data for all technical indicators.
+    
+    Args:
+        tickers: List of ticker symbols (with or without .NS suffix)
+        start: Start date in YYYY-MM-DD format (will be auto-adjusted for warmup)
+        end: End date in YYYY-MM-DD format
+        timeframe: Data timeframe (1min, 5min, 15min, 1hour, 1day)
+        
+    Returns:
+        Dictionary mapping ticker symbols to pandas DataFrames
+    """
+    # Calculate warmup period and adjust start date if needed
+    warmup_days = calculate_warmup_period()
+    
+    if warmup_days > 0:
+        # Convert start date to datetime, subtract warmup days, convert back
+        start_dt = datetime.strptime(start, '%Y-%m-%d')
+        adjusted_start_dt = start_dt - timedelta(days=warmup_days)
+        adjusted_start = adjusted_start_dt.strftime('%Y-%m-%d')
+        
+        print(f"[INFO] Warmup period: {warmup_days} days")
+        print(f"[INFO] Adjusted start date: {adjusted_start} (original: {start})")
+        start = adjusted_start
+    else:
+        print(f"[INFO] No warmup applied, using original start date: {start}")
+    
+    result = {}
+    dhan_success = 0
+    yfinance_fallback = 0
+    
+    print(f"[INFO] Fetching data for {len(tickers)} tickers...")
+    
+    # Load the NSE mapping at the start
+    mapping = load_nse_equity_mapping()
+    if mapping:
+        print(f"[INFO] NSE equity mapping loaded with {len(mapping)} symbols")
+    else:
+        print(f"[WARNING] NSE equity mapping not available, will use yFinance only")
+    
+    for ticker in tickers:
+        print(f"[INFO] Processing {ticker}...")
+        
+        # Try Dhan first (only if mapping is available)
+        df = None
+        if mapping:
+            df = fetch_from_dhan(ticker, start, end, timeframe)
+        
+        if df is not None and not df.empty and "Close" in df.columns:
+            result[ticker] = df
+            dhan_success += 1
+            continue
+        
+        # Fallback to yFinance
+        print(f"[INFO] Falling back to yFinance for {ticker}")
+        df = fetch_from_yfinance(ticker, start, end)
+        
+        if df is not None and not df.empty:
+            if "Close" not in df.columns:
+                print(f"[⚠️] Missing 'Close' column for {ticker}")
+                continue
+            result[ticker] = df
+            yfinance_fallback += 1
+        else:
+            print(f"[⚠️] Failed to fetch data for {ticker} from both sources")
+    
+    print(f"[INFO] Data fetch complete:")
+    print(f"  - Dhan: {dhan_success} tickers")  
+    print(f"  - yFinance: {yfinance_fallback} tickers")
+    print(f"  - Total: {len(result)} tickers")
+    
+    return result
+
+# Additional utility functions for Dhan integration
+
+def get_available_dhan_symbols():
+    """Get list of all available symbols in Dhan NSE equity mapping"""
+    mapping = load_nse_equity_mapping()
+    return list(mapping.keys())
+
+def get_dhan_symbol_info(ticker):
+    """Get detailed information about a symbol from Dhan mapping"""
+    mapping = load_nse_equity_mapping()
+    clean_ticker = ticker.replace('.NS', '').upper().strip()
+    return mapping.get(clean_ticker, None)
+
+def refresh_nse_mapping():
+    """Force refresh of the NSE equity mapping cache"""
+    global _nse_mapping_cache
+    _nse_mapping_cache = None
+    return load_nse_equity_mapping()

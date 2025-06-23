@@ -1,0 +1,31 @@
+ticker,company_name,market_cap_category
+RELIANCE.NS,Reliance Industries,largecap
+TCS.NS,Tata Consultancy Services,largecap
+HDFCBANK.NS,HDFC Bank,largecap
+ICICIBANK.NS,ICICI Bank,largecap
+INFY.NS,Infosys,largecap
+HINDUNILVR.NS,Hindustan Unilever,largecap
+ITC.NS,ITC Limited,largecap
+SBIN.NS,State Bank of India,largecap
+BHARTIARTL.NS,Bharti Airtel,largecap
+LT.NS,Larsen & Toubro,largecap
+PIDILITIND.NS,Pidilite Industries,midcap
+CUMMINSIND.NS,Cummins India,midcap
+GODREJPROP.NS,Godrej Properties,midcap
+TRENT.NS,Trent Ltd,midcap
+ASHOKLEY.NS,Ashok Leyland,midcap
+TATAPOWER.NS,Tata Power,midcap
+UBL.NS,United Breweries,midcap
+BEL.NS,Bharat Electronics,midcap
+BALKRISIND.NS,Balkrishna Industries,midcap
+TVSMOTOR.NS,TVS Motor Company,midcap
+BALRAMCHIN.NS,Balrampur Chini Mills,smallcap
+IRCTC.NS,Indian Railway Catering and Tourism,smallcap
+CERA.NS,Cera Sanitaryware,smallcap
+LXCHEM.NS,Laxmi Organic,smallcap
+MAPMYINDIA.NS,C.E. Info Systems,smallcap
+TANLA.NS,Tanla Platforms,smallcap
+HAPPSTMNDS.NS,Happiest Minds,smallcap
+KPRMILL.NS,KPR Mill,smallcap
+SONATSOFTW.NS,Sonata Software,smallcap
+ASTERDM.NS,Aster DM Healthcare,smallcap

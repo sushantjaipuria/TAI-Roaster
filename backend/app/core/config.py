@@ -10,8 +10,9 @@ Centralized configuration management for the TAI Roaster API:
 """
 
 from pydantic_settings import BaseSettings
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import os
+import sys
 from pathlib import Path
 
 
@@ -196,6 +197,54 @@ class Settings(BaseSettings):
     ENABLE_ML_RECOMMENDATIONS: bool = False
     ENABLE_RISK_ANALYSIS: bool = True
     
+    # =============================================================================
+    # INTELLIGENCE MODULE SETTINGS
+    # =============================================================================
+    
+    # Intelligence module configuration
+    OPENAI_API_KEY: Optional[str] = None
+    ANTHROPIC_API_KEY: Optional[str] = None
+    ML_MODELS_PATH: str = "intelligence/models/enhanced/"
+    INTELLIGENCE_MODULE_PATH: str = "intelligence/"
+    MARKET_DATA_CACHE_TTL: int = 300  # 5 minutes
+    ENABLE_LLM_ANALYSIS: bool = False
+    
+    # Model configuration
+    MODEL_ENSEMBLE_WEIGHTS: Dict[str, float] = {
+        "xgboost": 0.3,
+        "lightgbm": 0.25,
+        "catboost": 0.25,
+        "ngboost": 0.2
+    }
+    RISK_FREE_RATE: float = 0.06
+    MARKET_RETURN: float = 0.12
+    CONFIDENCE_THRESHOLD: float = 0.7
+    
+    # TAI scoring configuration
+    TAI_SCORE_WEIGHTS: Dict[str, float] = {
+        "performance": 0.25,
+        "risk_management": 0.20,
+        "diversification": 0.20,
+        "ml_confidence": 0.15,
+        "liquidity": 0.10,
+        "cost_efficiency": 0.10
+    }
+    
+    # Risk thresholds
+    HIGH_CONCENTRATION_THRESHOLD: float = 0.25
+    MAX_SINGLE_STOCK_ALLOCATION: float = 0.20
+    MIN_DIVERSIFICATION_HOLDINGS: int = 5
+    MAX_SECTOR_ALLOCATION: float = 0.30
+    
+    # Market cap thresholds (in INR)
+    LARGE_CAP_MIN: float = 50000000000  # ₹50,000 crores
+    MID_CAP_MIN: float = 10000000000    # ₹10,000 crores
+    
+    # Performance targets
+    MIN_SHARPE_RATIO: float = 1.0
+    TARGET_ANNUAL_RETURN: float = 0.15  # 15%
+    MAX_ACCEPTABLE_DRAWDOWN: float = 0.20  # 20%
+    
     # Validation features
     ENABLE_STRICT_VALIDATION: bool = True
     ENABLE_TICKER_VALIDATION: bool = True
@@ -249,6 +298,7 @@ class Settings(BaseSettings):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._setup_directories()
+        self._setup_intelligence_module()
     
     def _setup_directories(self):
         """Create necessary directories if they don't exist."""
@@ -260,6 +310,27 @@ class Settings(BaseSettings):
         ]
         
         for directory in directories:
+            Path(directory).mkdir(parents=True, exist_ok=True)
+    
+    def _setup_intelligence_module(self):
+        """Setup intelligence module Python path and directories."""
+        # Add project root to Python path for intelligence module imports
+        project_root = Path(__file__).parent.parent.parent.parent  # Go up to TAI-Roaster root
+        if str(project_root) not in sys.path:
+            sys.path.append(str(project_root))
+        
+        # Create intelligence module directories
+        intelligence_directories = [
+            "cache",
+            "data", 
+            "models",
+            "reports",
+            "uploads",
+            "intelligence/models/enhanced",
+            "intelligence/config"
+        ]
+        
+        for directory in intelligence_directories:
             Path(directory).mkdir(parents=True, exist_ok=True)
     
     def get_cors_settings(self) -> Dict[str, Any]:
