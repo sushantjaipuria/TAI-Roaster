@@ -29,7 +29,7 @@ except ImportError as e:
 
 logger = logging.getLogger(__name__)
 
-class ModelManager:
+class MLModelsManager:
     """Singleton for managing ML models"""
     
     _instance = None
@@ -37,7 +37,7 @@ class ModelManager:
     
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super(ModelManager, cls).__new__(cls)
+            cls._instance = super(MLModelsManager, cls).__new__(cls)
         return cls._instance
     
     def __init__(self):
@@ -48,7 +48,7 @@ class ModelManager:
             self.initialized = False
             self._setup_model_paths()
             self.load_models()
-            ModelManager._initialized = True
+            MLModelsManager._initialized = True
     
     def _setup_model_paths(self):
         """Setup paths to all trained models"""
@@ -182,4 +182,4 @@ class ModelManager:
         self.load_models()
 
 # Create singleton instance
-model_manager = ModelManager() 
+ml_models_manager = MLModelsManager() 
