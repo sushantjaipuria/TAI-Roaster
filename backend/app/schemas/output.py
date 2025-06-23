@@ -42,7 +42,7 @@ class PredictionResult(BaseModel):
     prediction_date: datetime = Field(default_factory=datetime.now, description="Prediction timestamp")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "ticker": "RELIANCE.NS",
                 "predicted_return": 12.5,

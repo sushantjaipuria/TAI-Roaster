@@ -7,8 +7,7 @@ from typing import List, Dict, Optional, Any
 from datetime import datetime
 from enum import Enum
 
-from app.models.portfolio import PortfolioInput
-from app.models.onboarding import UserProfile
+from app.schemas.input import PortfolioInput, UserProfile
 
 class AnalysisType(str, Enum):
     """Analysis type options"""
@@ -76,7 +75,7 @@ class MLPrediction(BaseModel):
     ensemble_confidence: float = Field(..., ge=0, le=1, description="Ensemble confidence (0-1)")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "ticker": "RELIANCE.NS",
                 "xgboost_prediction": 0.15,
@@ -101,7 +100,7 @@ class PerformanceMetrics(BaseModel):
     expected_shortfall: Optional[float] = None
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "total_return": 15.5,
                 "annualized_return": 12.3,
@@ -122,7 +121,7 @@ class AllocationBreakdown(BaseModel):
     diversification_ratio: float = Field(..., description="Diversification ratio")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "sector_allocation": {
                     "Technology": 25.5,
@@ -175,7 +174,7 @@ class ActionPlan(BaseModel):
     rebalancing_suggestions: List[str] = Field(..., description="Portfolio rebalancing suggestions")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "immediate_actions": [
                     "Reduce concentration in technology sector",
@@ -247,7 +246,7 @@ class EnhancedAnalysisResponse(BaseModel):
     
     class Config:
         use_enum_values = True
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "overall_score": 85.3,
                 "risk_level": "Medium",

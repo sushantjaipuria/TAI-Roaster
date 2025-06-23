@@ -15,18 +15,6 @@ project_root = Path(__file__).parent.parent.parent.parent  # Go up to TAI-Roaste
 if str(project_root) not in sys.path:
     sys.path.append(str(project_root))
 
-try:
-    from intelligence.predictors.base_xgboost import XGBoostPredictor
-    from intelligence.predictors.ngboost_predictor import NGBoostPredictor
-    from intelligence.predictors.quantile_regressor import QuantileRegressor
-    from intelligence.predictors.classifier import ClassifierPredictor
-except ImportError as e:
-    print(f"Warning: Intelligence module predictors import failed: {e}")
-    XGBoostPredictor = None
-    NGBoostPredictor = None
-    QuantileRegressor = None
-    ClassifierPredictor = None
-
 logger = logging.getLogger(__name__)
 
 class MLModelsManager:
@@ -44,7 +32,6 @@ class MLModelsManager:
         if not self._initialized:
             self.models = {}
             self.model_paths = {}
-            self.predictors = {}
             self.initialized = False
             self._setup_model_paths()
             self.load_models()
@@ -111,25 +98,8 @@ class MLModelsManager:
                 except Exception as e:
                     logger.error(f"❌ Failed to load {model_name}: {e}")
             
-            # Initialize predictor classes if available
-            if XGBoostPredictor and 'xgboost' in self.models:
-                self.predictors['xgboost'] = XGBoostPredictor()
-                logger.debug("✅ XGBoost predictor initialized")
-            
-            if NGBoostPredictor and 'ngboost' in self.models:
-                self.predictors['ngboost'] = NGBoostPredictor()
-                logger.debug("✅ NGBoost predictor initialized")
-            
-            if QuantileRegressor and self.model_paths['quantile_model'].exists():
-                self.predictors['quantile'] = QuantileRegressor()
-                logger.debug("✅ Quantile regressor initialized")
-            
-            if ClassifierPredictor and self.model_paths['classifier'].exists():
-                self.predictors['classifier'] = ClassifierPredictor()
-                logger.debug("✅ Classifier predictor initialized")
-            
             self.initialized = True
-            logger.info(f"✅ ML models loaded successfully: {loaded_count} models, {len(self.predictors)} predictors")
+            logger.info(f"✅ ML models loaded successfully: {loaded_count} models")
             
         except Exception as e:
             logger.error(f"❌ Critical error loading ML models: {e}")
@@ -138,10 +108,6 @@ class MLModelsManager:
     def get_model(self, model_name: str) -> Optional[Any]:
         """Get a specific model by name"""
         return self.models.get(model_name)
-    
-    def get_predictor(self, predictor_name: str) -> Optional[Any]:
-        """Get a specific predictor by name"""
-        return self.predictors.get(predictor_name)
     
     def get_ensemble_models(self) -> Dict[str, Any]:
         """Get the main ensemble models for predictions"""
@@ -168,9 +134,7 @@ class MLModelsManager:
         return {
             'initialized': self.initialized,
             'total_models': len(self.models),
-            'total_predictors': len(self.predictors),
             'loaded_models': list(self.models.keys()),
-            'available_predictors': list(self.predictors.keys()),
             'ensemble_ready': len(self.get_ensemble_models()) >= 2
         }
     
@@ -178,8 +142,10 @@ class MLModelsManager:
         """Reload all models (useful for updates)"""
         logger.info("🔄 Reloading ML models...")
         self.models.clear()
-        self.predictors.clear()
         self.load_models()
 
 # Create singleton instance
 ml_models_manager = MLModelsManager() 
+
+# Export alias for backward compatibility
+model_manager = ml_models_manager 
