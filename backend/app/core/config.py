@@ -319,13 +319,14 @@ class Settings(BaseSettings):
         if str(project_root) not in sys.path:
             sys.path.append(str(project_root))
         
-        # Create intelligence module directories
+        # Create only necessary intelligence module subdirectories
+        # Note: Other directories exist in their proper module locations:
+        # - cache -> backend/cache/
+        # - data -> intelligence/data/
+        # - models -> intelligence/models/
+        # - reports -> backend/reports/
+        # - uploads -> backend/uploads/
         intelligence_directories = [
-            "cache",
-            "data", 
-            "models",
-            "reports",
-            "uploads",
             "intelligence/models/enhanced",
             "intelligence/config"
         ]
