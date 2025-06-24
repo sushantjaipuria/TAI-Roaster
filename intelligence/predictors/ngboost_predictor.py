@@ -5,7 +5,7 @@ from pathlib import Path
 
 # Use absolute path resolution to handle different working directories
 BASE_DIR = Path(__file__).parent.parent.parent  # Go up to TAI-Roaster root
-MODEL_PATH = BASE_DIR / "intelligence" / "models" / "enhanced" / "ngboost_model.pkl"
+MODEL_PATH = BASE_DIR / "intelligence" / "training" / "intelligence" / "models" / "enhanced" / "ngboost_model.pkl"
 
 def load_ngboost_model():
     """Load NGBoost model with error handling"""

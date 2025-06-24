@@ -20,6 +20,9 @@ from app.models.analysis import (
 from app.api.endpoints.onboarding import sessions_storage
 from app.api.endpoints.portfolio import portfolios_storage
 
+# Import file saver for loading actual analysis results
+from app.utils.file_saver import analysis_file_saver
+
 # Add enhanced analysis imports
 try:
     from app.schemas.enhanced_analysis import (
@@ -88,6 +91,38 @@ def load_demo_analysis():
             raise HTTPException(status_code=500, detail=f"Failed to load demo analysis file: {str(e)}")
     else:
         raise HTTPException(status_code=500, detail="Demo analysis file not found")
+
+
+def load_analysis_by_id(analysis_id: str):
+    """
+    Load analysis data by ID, handling both full UUIDs and truncated UUIDs.
+    Tries multiple strategies to find the analysis file.
+    """
+    try:
+        # Strategy 1: Try to load using the full analysis_id as-is
+        success, analysis_data, error = analysis_file_saver.get_analysis_by_id(analysis_id)
+        if success:
+            return analysis_data
+        
+        # Strategy 2: Try with truncated UUID (first 8 characters) for portfolio-analysis files
+        truncated_id = analysis_id[:8]
+        portfolio_analysis_id = f"portfolio-analysis-{truncated_id}"
+        success, analysis_data, error = analysis_file_saver.get_analysis_by_id(portfolio_analysis_id)
+        if success:
+            return analysis_data
+        
+        # Strategy 3: Try with just the truncated ID
+        success, analysis_data, error = analysis_file_saver.get_analysis_by_id(truncated_id)
+        if success:
+            return analysis_data
+        
+        # Strategy 4: Fallback to demo analysis if nothing found
+        print(f"Warning: No analysis found for ID {analysis_id}, falling back to demo data")
+        return load_demo_analysis()
+        
+    except Exception as e:
+        print(f"Error loading analysis {analysis_id}: {e}, falling back to demo data")
+        return load_demo_analysis()
 
 
 @router.post("/analysis/request", response_model=AnalysisRequestResponse)
@@ -171,18 +206,18 @@ async def get_analysis_status(request_id: str):
 async def get_analysis_results(request_id: str):
     """
     Get the results of a completed analysis.
-    Always returns demo portfolio analysis data.
+    Loads actual analysis data by ID, with fallback to demo data.
     """
     try:
-        # Load demo analysis data
-        demo_analysis = load_demo_analysis()
+        # Load analysis data by ID (tries multiple strategies to find the file)
+        analysis_data = load_analysis_by_id(request_id)
         
-        # Return demo analysis data for any request
+        # Return analysis data for the request
         from fastapi.responses import JSONResponse
         return JSONResponse(content={
             "success": True,
             "request_id": request_id,
-            "analysis": demo_analysis,  # Keep original camelCase for frontend
+            "analysis": analysis_data,  # Keep original camelCase for frontend
             "completed_at": datetime.now().isoformat()
         })
         

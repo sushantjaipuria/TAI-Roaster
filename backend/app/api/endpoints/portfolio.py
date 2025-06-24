@@ -35,6 +35,16 @@ from app.services.portfolio_validator import PortfolioValidationService
 from app.core.config import settings
 from app.utils.file_handler import file_handler
 
+# Import intelligence service and utilities for enhanced analysis
+try:
+    from app.services.intelligence_service import intelligence_service
+    from app.utils.format_converter import convert_enhanced_analysis_to_frontend_format
+    from app.utils.file_saver import analysis_file_saver
+    INTELLIGENCE_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: Intelligence service not available: {e}")
+    INTELLIGENCE_AVAILABLE = False
+
 router = APIRouter()
 
 
@@ -268,15 +278,14 @@ async def analyze_portfolio(
     request: AnalysisRequest
 ):
     """
-    Start comprehensive portfolio analysis.
+    Start comprehensive portfolio analysis using intelligence module.
     
-    This endpoint would typically:
-    1. Validate the portfolio
-    2. Fetch current market data
-    3. Generate analysis and recommendations
-    4. Return analysis results
-    
-    For now, returns a mock analysis response.
+    This endpoint:
+    1. Validates the portfolio
+    2. Runs ML-powered analysis using intelligence service
+    3. Converts results to frontend format
+    4. Saves results to processed directory
+    5. Returns analysis ID for frontend consumption
     """
     try:
         # First validate the portfolio
@@ -299,19 +308,66 @@ async def analyze_portfolio(
         portfolios_storage[analysis_id] = request.portfolio
         user_profiles_storage[analysis_id] = request.user_profile
         
-        # Return mock analysis (in real implementation, this would trigger actual analysis)
+        # Try to use intelligence service if available
+        if INTELLIGENCE_AVAILABLE and intelligence_service.initialized:
+            try:
+                print(f"🤖 Running enhanced analysis for {analysis_id} using intelligence module")
+                
+                # Run enhanced analysis using intelligence service
+                enhanced_results = await intelligence_service.analyze_portfolio(
+                    request.portfolio,
+                    request.user_profile
+                )
+                
+                # Convert to frontend format
+                frontend_format = convert_enhanced_analysis_to_frontend_format(enhanced_results)
+                
+                # Save to processed directory for frontend consumption
+                save_success, file_path, save_error = analysis_file_saver.save_demo_format_analysis(
+                    frontend_format, 
+                    f"portfolio-analysis-{analysis_id[:8]}"
+                )
+                
+                if save_success:
+                    print(f"✅ Analysis results saved to: {file_path}")
+                else:
+                    print(f"⚠️ Failed to save analysis results: {save_error}")
+                
+                return {
+                    "success": True,
+                    "analysisId": analysis_id,
+                    "message": "Portfolio analysis completed using AI intelligence",
+                    "data": {
+                        "portfolio": request.portfolio,
+                        "validation": validation_response,
+                        "estimatedProcessingTime": "Analysis completed",
+                        "intelligence_used": True,
+                        "file_saved": save_success
+                    }
+                }
+                
+            except Exception as intelligence_error:
+                print(f"⚠️ Intelligence analysis failed, falling back to mock: {intelligence_error}")
+                # Fall through to mock analysis
+        
+        # Fallback to mock analysis if intelligence service unavailable
+        print(f"📝 Using mock analysis for {analysis_id} (intelligence not available)")
+        
         return {
             "success": True,
             "analysisId": analysis_id,
-            "message": "Portfolio analysis started",
+            "message": "Portfolio analysis started (mock mode)",
             "data": {
                 "portfolio": request.portfolio,
                 "validation": validation_response,
-                "estimatedProcessingTime": "2-3 minutes"
+                "estimatedProcessingTime": "2-3 minutes",
+                "intelligence_used": False,
+                "note": "Using fallback analysis - intelligence module not available"
             }
         }
         
     except Exception as e:
+        print(f"❌ Portfolio analysis failed for {analysis_id}: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"Failed to analyze portfolio: {str(e)}"

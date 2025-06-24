@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 import yfinance as yf
 import time
 import os
+import joblib
 
 # Load environment variables to ensure API keys are available
 from dotenv import load_dotenv
@@ -280,22 +281,104 @@ def generate_latest_features(ticker: str, user_input: Dict[str, Any] = None):
             )
         return None, None
 
+def _apply_preprocessing(features_df, logger=None):
+    """
+    Apply preprocessing pipeline to match training - loads saved preprocessors and feature selection
+    This replicates the original system's preprocessing logic.
+    """
+    try:
+        # Load saved preprocessors from enhanced model training using absolute path
+        preprocessors_path = BASE_DIR / "intelligence" / "training" / "intelligence" / "models" / "enhanced" / "preprocessors.pkl"
+        preprocessors = joblib.load(str(preprocessors_path))
+        
+        if logger:
+            logger.info(f"✅ Loaded preprocessors from {preprocessors_path}")
+        else:
+            print(f"[INFO] ✅ Loaded preprocessors from {preprocessors_path}")
+        
+        # CRITICAL: Apply feature selection to match training
+        if 'feature_columns' in preprocessors:
+            # Get the selected feature columns from training
+            selected_features = preprocessors['feature_columns']
+            
+            # Ensure all required features are present
+            missing_features = set(selected_features) - set(features_df.columns)
+            if missing_features:
+                warning_msg = f"⚠️ Missing features: {missing_features}"
+                if logger:
+                    logger.warning(warning_msg)
+                else:
+                    print(f"[WARNING] {warning_msg}")
+                # Add missing features with zeros
+                for feature in missing_features:
+                    features_df[feature] = 0
+            
+            # Select only the features used in training
+            available_features = [f for f in selected_features if f in features_df.columns]
+            if len(available_features) < len(selected_features):
+                warning_msg = f"Only {len(available_features)}/{len(selected_features)} features available"
+                if logger:
+                    logger.warning(warning_msg)
+                else:
+                    print(f"[WARNING] {warning_msg}")
+            
+            # Apply feature selection - this is the key step!
+            features_df = features_df[selected_features].copy()
+            
+            success_msg = f"✅ Applied feature selection: {len(selected_features)} features"
+            if logger:
+                logger.info(success_msg)
+            else:
+                print(f"[INFO] {success_msg}")
+        
+        # Apply preprocessing steps in the same order as training
+        if 'imputer' in preprocessors and preprocessors['imputer']:
+            features_df = pd.DataFrame(
+                preprocessors['imputer'].transform(features_df),
+                columns=features_df.columns,
+                index=features_df.index
+            )
+        
+        if 'scaler' in preprocessors and preprocessors['scaler']:
+            features_df = pd.DataFrame(
+                preprocessors['scaler'].transform(features_df),
+                columns=features_df.columns,
+                index=features_df.index
+            )
+        
+        return features_df
+        
+    except Exception as e:
+        error_msg = f"Preprocessing failed: {e}"
+        if logger:
+            logger.error(error_msg)
+        else:
+            print(f"[ERROR] {error_msg}")
+        return features_df  # Return original if preprocessing fails
+
 def extract_model_outputs(features_df, prices_df, ticker: str = None):
     """Extract outputs from all models with transparency logging"""
     start_time = time.time()
     
     try:
-        # Get feature columns for model input
-        feature_columns = get_feature_columns()
+        # Apply preprocessing pipeline to match training (load preprocessors and select 50 features)
+        processed_features_df = _apply_preprocessing(features_df)
         
-        # Select available features (some might be missing due to insufficient data)
-        available_features = [col for col in feature_columns if col in features_df.columns]
-        
-        if len(available_features) < 10:  # Minimum feature threshold
-            print(f"[⚠️] Insufficient features available: {len(available_features)}")
+        if processed_features_df is None or processed_features_df.empty:
+            print(f"[⚠️] Preprocessing failed or returned empty DataFrame")
             return None
         
-        latest_features = features_df[available_features].iloc[-1].values.tolist()
+        # Check if we have enough features after preprocessing
+        if len(processed_features_df.columns) < 10:  # Minimum feature threshold
+            print(f"[⚠️] Insufficient features after preprocessing: {len(processed_features_df.columns)}")
+            return None
+        
+        # Get the latest processed features (should be exactly 50 features after preprocessing)
+        latest_features = processed_features_df.iloc[-1].values.tolist()
+        feature_names = processed_features_df.columns.tolist()
+        
+        print(f"[INFO] ✅ Generated {len(latest_features)} enhanced features for {ticker}")
+        print(f"[DEBUG] Using {len(latest_features)} features: {feature_names[:5]}{'...' if len(feature_names) > 5 else ''}")
         
         # Get predictions from all models with detailed logging
         model_outputs = {}
@@ -303,8 +386,8 @@ def extract_model_outputs(features_df, prices_df, ticker: str = None):
         # XGBoost Model
         xgb_start_time = time.time()
         try:
-            xgb_return = predict_return_xgboost(latest_features[:3])
-            xgb_confidence = predict_probability_gt_threshold(latest_features[:3])
+            xgb_return = predict_return_xgboost(latest_features)
+            xgb_confidence = predict_probability_gt_threshold(latest_features)
             xgb_time = (time.time() - xgb_start_time) * 1000
             
             model_outputs['xgboost'] = {
@@ -315,10 +398,10 @@ def extract_model_outputs(features_df, prices_df, ticker: str = None):
             
             # Log XGBoost prediction
             if ticker:
-                feature_importance = {available_features[i]: abs(latest_features[i]) for i in range(min(3, len(available_features)))}
+                feature_importance = {feature_names[i]: abs(latest_features[i]) for i in range(min(len(feature_names), len(latest_features)))}
                 transparency_logger.log_model_prediction(
                     ticker, "XGBoost", "1.7.0",
-                    latest_features[:3], available_features[:3],
+                    latest_features, feature_names,
                     xgb_return, xgb_confidence,
                     {"n_estimators": 100, "max_depth": 6, "learning_rate": 0.1},
                     feature_importance,
@@ -332,7 +415,7 @@ def extract_model_outputs(features_df, prices_df, ticker: str = None):
         # NGBoost Model
         ngb_start_time = time.time()
         try:
-            ngb_result = predict_distribution(latest_features[:3])
+            ngb_result = predict_distribution(latest_features)
             ngb_time = (time.time() - ngb_start_time) * 1000
             
             model_outputs['ngboost'] = {
@@ -343,10 +426,10 @@ def extract_model_outputs(features_df, prices_df, ticker: str = None):
             
             # Log NGBoost prediction
             if ticker:
-                feature_importance = {available_features[i]: abs(latest_features[i]) for i in range(min(3, len(available_features)))}
+                feature_importance = {feature_names[i]: abs(latest_features[i]) for i in range(min(len(feature_names), len(latest_features)))}
                 transparency_logger.log_model_prediction(
                     ticker, "NGBoost", "0.4.0",
-                    latest_features[:3], available_features[:3],
+                    latest_features, feature_names,
                     ngb_result['mean'], 1.0 - ngb_result['std'],
                     {"n_estimators": 500, "learning_rate": 0.01, "distribution": "Normal"},
                     feature_importance,
@@ -360,7 +443,7 @@ def extract_model_outputs(features_df, prices_df, ticker: str = None):
         # Quantile Regression Model
         qr_start_time = time.time()
         try:
-            qr_result = predict_quantiles(latest_features[:3])
+            qr_result = predict_quantiles(latest_features)
             qr_time = (time.time() - qr_start_time) * 1000
             
             model_outputs['quantile'] = {
@@ -371,10 +454,10 @@ def extract_model_outputs(features_df, prices_df, ticker: str = None):
             
             # Log Quantile Regression prediction
             if ticker:
-                feature_importance = {available_features[i]: abs(latest_features[i]) for i in range(min(3, len(available_features)))}
+                feature_importance = {feature_names[i]: abs(latest_features[i]) for i in range(min(len(feature_names), len(latest_features)))}
                 transparency_logger.log_model_prediction(
                     ticker, "Quantile Regression", "1.3.0",
-                    latest_features[:3], available_features[:3],
+                    latest_features, feature_names,
                     qr_result['p50'], 1.0 - (qr_result['p90'] - qr_result['p10']),
                     {"quantiles": [0.1, 0.5, 0.9], "alpha": 1.0},
                     feature_importance,
@@ -1023,3 +1106,193 @@ async def process_ticker_fallback(ticker: str, user_input: UserInput, features_d
     except Exception as e:
         print(f"[⚠️] Fallback prediction failed for {ticker}: {e}")
         return None
+
+# --- Portfolio Analysis Function (Direct Holdings Analysis) ---
+async def generate_complete_tai_roast_analysis(holdings, user_input: Dict[str, Any], report_id: str = None) -> Dict[str, Any]:
+    """
+    Analyze actual portfolio holdings using existing ML infrastructure.
+    This replicates the original system's approach of analyzing uploaded portfolio holdings
+    instead of selecting stocks from a stock universe.
+    
+    Args:
+        holdings: List of portfolio holdings with ticker information
+        user_input: Dictionary containing user preferences and portfolio data
+        report_id: Optional report identifier for tracking
+    
+    Returns:
+        Dictionary containing comprehensive portfolio analysis results
+    """
+    print(f"🔍 Starting Portfolio Holdings Analysis")
+    print(f"📊 Analyzing {len(holdings)} holdings from uploaded portfolio")
+    
+    # Extract tickers from actual portfolio holdings
+    tickers = [holding.ticker for holding in holdings]
+    print(f"[INFO] Portfolio tickers: {tickers}")
+    
+    # Initialize results structure
+    analysis_results = {
+        "portfolio_analysis": {
+            "total_holdings": len(holdings),
+            "tickers": tickers,
+            "analysis_timestamp": datetime.now().isoformat(),
+            "report_id": report_id
+        },
+        "ml_predictions": [],
+        "market_data": [],
+        "stock_analysis": [],
+        "portfolio_metrics": {},
+        "recommendations": [],
+        "system_info": {
+            "analysis_type": "portfolio_holdings",
+            "pipeline_used": "generate_complete_tai_roast_analysis",
+            "ml_enabled": True
+        }
+    }
+    
+    # Process each holding in the actual portfolio
+    total_analysis_value = 0
+    successful_analyses = 0
+    
+    for holding in holdings:
+        try:
+            ticker = holding.ticker
+            print(f"[INFO] Analyzing holding: {ticker}")
+            
+            # Generate ML features for this holding
+            features_df, prices_df = generate_latest_features(ticker, user_input)
+            
+            if features_df is None or prices_df is None:
+                print(f"[⚠️] Skipping {ticker} - insufficient data")
+                # Add placeholder data for failed analysis
+                analysis_results["stock_analysis"].append({
+                    "ticker": ticker,
+                    "status": "insufficient_data",
+                    "quantity": holding.quantity,
+                    "avg_buy_price": holding.avg_buy_price,
+                    "current_value": holding.quantity * (holding.current_price or holding.avg_buy_price)
+                })
+                continue
+            
+            # Extract ML model predictions for this holding
+            model_outputs = extract_model_outputs(features_df, prices_df, ticker)
+            if model_outputs:
+                analysis_results["ml_predictions"].append({
+                    "ticker": ticker,
+                    "predictions": model_outputs,
+                    "holding_info": {
+                        "quantity": holding.quantity,
+                        "avg_buy_price": holding.avg_buy_price,
+                        "current_price": holding.current_price,
+                        "investment_amount": holding.quantity * holding.avg_buy_price
+                    }
+                })
+            
+            # Extract market data for this holding
+            market_data = extract_market_data(features_df, prices_df)
+            if market_data:
+                market_data["ticker"] = ticker
+                market_data["holding_info"] = {
+                    "quantity": holding.quantity,
+                    "avg_buy_price": holding.avg_buy_price,
+                    "current_price": holding.current_price
+                }
+                analysis_results["market_data"].append(market_data)
+            
+            # Create comprehensive stock analysis for this holding
+            stock_analysis = {
+                "ticker": ticker,
+                "holding_details": {
+                    "quantity": holding.quantity,
+                    "avg_buy_price": holding.avg_buy_price,
+                    "current_price": holding.current_price or holding.avg_buy_price,
+                    "total_investment": holding.quantity * holding.avg_buy_price,
+                    "current_value": holding.quantity * (holding.current_price or holding.avg_buy_price),
+                    "unrealized_pnl": holding.quantity * ((holding.current_price or holding.avg_buy_price) - holding.avg_buy_price)
+                },
+                "ml_analysis": model_outputs,
+                "market_analysis": market_data,
+                "recommendation": "HOLD",  # Default recommendation
+                "confidence_score": 0.7,   # Default confidence
+                "analysis_timestamp": datetime.now().isoformat()
+            }
+            
+            # Calculate recommendation based on ML predictions
+            if model_outputs:
+                avg_return = np.mean([output.get('return', 0) for output in model_outputs.values()])
+                avg_confidence = np.mean([output.get('confidence', 0.5) for output in model_outputs.values()])
+                
+                if avg_return > 0.15:  # >15% expected return
+                    stock_analysis["recommendation"] = "STRONG_BUY"
+                elif avg_return > 0.05:  # >5% expected return
+                    stock_analysis["recommendation"] = "BUY"
+                elif avg_return < -0.15:  # <-15% expected return
+                    stock_analysis["recommendation"] = "STRONG_SELL"
+                elif avg_return < -0.05:  # <-5% expected return
+                    stock_analysis["recommendation"] = "SELL"
+                else:
+                    stock_analysis["recommendation"] = "HOLD"
+                
+                stock_analysis["confidence_score"] = avg_confidence
+                stock_analysis["expected_return"] = avg_return
+            
+            analysis_results["stock_analysis"].append(stock_analysis)
+            
+            # Track successful analyses
+            successful_analyses += 1
+            total_analysis_value += holding.quantity * (holding.current_price or holding.avg_buy_price)
+            
+            print(f"[✓] Completed analysis for {ticker}")
+            
+        except Exception as e:
+            print(f"[⚠️] Error analyzing {ticker}: {e}")
+            # Add error entry to maintain consistency
+            analysis_results["stock_analysis"].append({
+                "ticker": ticker,
+                "status": "analysis_error",
+                "error": str(e),
+                "quantity": holding.quantity,
+                "avg_buy_price": holding.avg_buy_price
+            })
+            continue
+    
+    # Calculate portfolio-level metrics
+    if successful_analyses > 0:
+        portfolio_metrics = {
+            "total_holdings": len(holdings),
+            "successful_analyses": successful_analyses,
+            "total_portfolio_value": total_analysis_value,
+            "average_confidence": np.mean([
+                stock.get("confidence_score", 0.5) 
+                for stock in analysis_results["stock_analysis"] 
+                if "confidence_score" in stock
+            ]),
+            "portfolio_expected_return": np.mean([
+                stock.get("expected_return", 0) 
+                for stock in analysis_results["stock_analysis"] 
+                if "expected_return" in stock
+            ]),
+            "analysis_coverage": successful_analyses / len(holdings)
+        }
+        analysis_results["portfolio_metrics"] = portfolio_metrics
+    
+    # Generate portfolio-level recommendations
+    if successful_analyses > 0:
+        buy_count = sum(1 for stock in analysis_results["stock_analysis"] 
+                       if stock.get("recommendation") in ["BUY", "STRONG_BUY"])
+        sell_count = sum(1 for stock in analysis_results["stock_analysis"] 
+                        if stock.get("recommendation") in ["SELL", "STRONG_SELL"])
+        
+        portfolio_recommendation = {
+            "overall_recommendation": "REBALANCE" if (buy_count > 0 and sell_count > 0) else "HOLD",
+            "buy_recommendations": buy_count,
+            "sell_recommendations": sell_count,
+            "hold_recommendations": successful_analyses - buy_count - sell_count,
+            "analysis_summary": f"Successfully analyzed {successful_analyses}/{len(holdings)} holdings"
+        }
+        analysis_results["recommendations"] = [portfolio_recommendation]
+    
+    print(f"✅ Portfolio Holdings Analysis completed!")
+    print(f"📊 Analyzed {successful_analyses}/{len(holdings)} holdings successfully")
+    print(f"💰 Total portfolio value: ₹{total_analysis_value:,.0f}")
+    
+    return analysis_results

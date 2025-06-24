@@ -6,7 +6,7 @@ from pathlib import Path
 
 # Use absolute path resolution to handle different working directories
 BASE_DIR = Path(__file__).parent.parent.parent  # Go up to TAI-Roaster root
-MODEL_PATH = BASE_DIR / "intelligence" / "models" / "enhanced" / "xgboost_model.pkl"
+MODEL_PATH = BASE_DIR / "intelligence" / "training" / "intelligence" / "models" / "enhanced" / "xgboost_model.pkl"
 
 def load_model():
     if not MODEL_PATH.exists():

@@ -5,7 +5,7 @@ from pathlib import Path
 
 # Use absolute path resolution to handle different working directories
 BASE_DIR = Path(__file__).parent.parent.parent  # Go up to TAI-Roaster root
-MODEL_PATH = BASE_DIR / "intelligence" / "models" / "enhanced" / "random_forest_model.pkl"
+MODEL_PATH = BASE_DIR / "intelligence" / "training" / "intelligence" / "models" / "enhanced" / "random_forest_model.pkl"
 
 def load_classifier_model():
     if not MODEL_PATH.exists():
@@ -23,5 +23,10 @@ def load_classifier_model():
 model = load_classifier_model()
 
 def predict_probability_gt_threshold(features, threshold=0.02):
-    proba = model.predict_proba([features])[0][1]
-    return proba
+    # Since this is a RandomForestRegressor, not classifier, use predict instead
+    prediction = model.predict([features])[0]
+    # Convert prediction to probability-like value between 0 and 1
+    # Sigmoid function to map any real number to [0,1]
+    import math
+    probability = 1 / (1 + math.exp(-prediction))
+    return probability
