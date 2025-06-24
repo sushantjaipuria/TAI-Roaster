@@ -5,16 +5,16 @@ import { useParams } from 'next/navigation'
 import { PortfolioAnalysisDetailed } from '../../../../lib/types-results'
 import { getAnalysisResults } from '../../../../lib/api-results'
 
-// Import dashboard components (will be created in Phase 3)
-import PortfolioSummaryCard from '../../../../components/results/PortfolioSummaryCard'
+// WHOOP-inspired dashboard components
+import PortfolioHealthDashboard from '../../../../components/results/PortfolioHealthDashboard'
+import PerformanceStorySection from '../../../../components/results/PerformanceStorySection'
+import InsightsAndRisksSection from '../../../../components/results/InsightsAndRisksSection'
+import EnhancedStockInsights from '../../../../components/results/EnhancedStockInsights'
+
+// Enhanced dashboard components
 import AllocationDashboard from '../../../../components/results/AllocationDashboard'
 import PerformanceMetrics from '../../../../components/results/PerformanceMetrics'
-import StockInsightCards from '../../../../components/results/StockInsightCards'
-import FundamentalInsights from '../../../../components/results/FundamentalInsights'
-import RecommendationsPanel from '../../../../components/results/RecommendationsPanel'
-import PortfolioRating from '../../../../components/results/PortfolioRating'
 import ActionPlan from '../../../../components/results/ActionPlan'
-import ResultsHeader from '../../../../components/results/ResultsHeader'
 import ResultsFooter from '../../../../components/results/ResultsFooter'
 
 export default function PortfolioResultsPage() {
@@ -94,19 +94,23 @@ export default function PortfolioResultsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Results Header */}
-      <ResultsHeader analysisId={analysisId} data={analysisData} />
+      {/* WHOOP-Style Portfolio Health Dashboard */}
+      <PortfolioHealthDashboard data={analysisData} />
       
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Portfolio Summary Cards */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-          <div className="lg:col-span-2">
-            <PortfolioSummaryCard data={analysisData} />
-          </div>
-          <div className="lg:col-span-1">
-            <PortfolioRating data={analysisData} />
-          </div>
+      {/* Performance Story Section */}
+      <PerformanceStorySection data={analysisData} />
+      
+      {/* Insights and Risks Analysis */}
+      <InsightsAndRisksSection data={analysisData} />
+
+      {/* Enhanced Stock Insights */}
+      <EnhancedStockInsights data={analysisData} />
+
+      {/* Enhanced Portfolio Analysis */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 bg-white">
+        <div className="text-center mb-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Detailed Portfolio Analysis</h2>
+          <p className="text-gray-600">Deep dive into allocation, performance metrics, and action plans</p>
         </div>
 
         {/* Performance & Allocation */}
@@ -115,25 +119,14 @@ export default function PortfolioResultsPage() {
           <AllocationDashboard data={analysisData} />
         </div>
 
-        {/* Stock Analysis */}
-        <div className="mb-8">
-          <StockInsightCards data={analysisData} />
-        </div>
-
-        {/* Fundamental Insights */}
-        <div className="mb-8">
-          <FundamentalInsights data={analysisData} />
-        </div>
-
-        {/* Recommendations & Action Plan */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-          <RecommendationsPanel data={analysisData} />
+        {/* Action Plan */}
+        <div className="max-w-4xl mx-auto">
           <ActionPlan data={analysisData} />
         </div>
       </div>
 
       {/* Results Footer */}
-      <ResultsFooter data={analysisData} />
+      <ResultsFooter />
     </div>
   )
 } 
