@@ -147,6 +147,19 @@ const CompletePortfolioForm: React.FC<CompletePortfolioFormProps> = ({ className
     portfolio: false
   })
   
+  // Analysis Progress State
+  const [analysisState, setAnalysisState] = useState<{
+    isAnalyzing: boolean
+    progress: number
+    message: string
+    analysisId: string | null
+  }>({
+    isAnalyzing: false,
+    progress: 0,
+    message: '',
+    analysisId: null
+  })
+  
   // File Upload State
   const [fileUploadState, setFileUploadState] = useState<FileUploadState>({
     file: null,
@@ -190,6 +203,35 @@ const CompletePortfolioForm: React.FC<CompletePortfolioFormProps> = ({ className
   // =============================================================================
   // HANDLERS
   // =============================================================================
+  
+  // Progress simulation during analysis
+  const simulateAnalysisProgress = useCallback(() => {
+    const progressSteps = [
+      { progress: 10, message: "Initializing portfolio analysis..." },
+      { progress: 25, message: "Validating portfolio holdings..." },
+      { progress: 40, message: "Fetching market data..." },
+      { progress: 60, message: "Running AI-powered analysis..." },
+      { progress: 80, message: "Generating insights and recommendations..." },
+      { progress: 95, message: "Finalizing analysis report..." }
+    ]
+    
+    let currentStep = 0
+    const interval = setInterval(() => {
+      if (currentStep < progressSteps.length) {
+        const step = progressSteps[currentStep]
+        setAnalysisState(prev => ({
+          ...prev,
+          progress: step.progress,
+          message: step.message
+        }))
+        currentStep++
+      } else {
+        clearInterval(interval)
+      }
+    }, 1000) // Update every second
+    
+    return interval
+  }, [])
   
   const handleProfileFieldChange = (field: keyof UserProfile, value: any) => {
     setUserProfile(prev => ({
@@ -266,28 +308,56 @@ const CompletePortfolioForm: React.FC<CompletePortfolioFormProps> = ({ className
     setIsSubmitting(true)
     setSubmitError(null)
     
+    // Start analysis progress display
+    setAnalysisState({
+      isAnalyzing: true,
+      progress: 5,
+      message: "Starting portfolio analysis...",
+      analysisId: null
+    })
+    
+    // Start progress simulation
+    const progressInterval = simulateAnalysisProgress()
+    
     try {
       const portfolio: PortfolioInput = { holdings }
       
-      // Submit to API (reusing existing functionality)
+      // Submit to API (this will take 5-10 seconds)
       const response = await PortfolioApiClient.analyzePortfolio(
         portfolio,
         userProfile,
         'comprehensive'
       )
       
+      // Clear progress simulation
+      clearInterval(progressInterval)
+      
       if (response && response.analysisId) {
-        // Navigate to results page with analysis ID
-        router.push(`/portfolio/results/${response.analysisId}`)
+        // Show completion
+        setAnalysisState({
+          isAnalyzing: true,
+          progress: 100,
+          message: "Analysis completed successfully! Redirecting...",
+          analysisId: response.analysisId
+        })
+        
+        // Wait a moment to show completion, then navigate
+        setTimeout(() => {
+          router.push(`/portfolio/results/${response.analysisId}`)
+        }, 1500)
       } else {
         setSubmitError('Failed to start portfolio analysis')
+        setAnalysisState(prev => ({ ...prev, isAnalyzing: false }))
       }
     } catch (error) {
+      // Clear progress simulation on error
+      clearInterval(progressInterval)
       setSubmitError(error instanceof Error ? error.message : 'An error occurred')
+      setAnalysisState(prev => ({ ...prev, isAnalyzing: false }))
     } finally {
       setIsSubmitting(false)
     }
-  }, [userProfile, holdings, validateProfile, validatePortfolio, router])
+  }, [userProfile, holdings, validateProfile, validatePortfolio, router, simulateAnalysisProgress])
   
   // =============================================================================
   // EFFECTS
@@ -840,6 +910,80 @@ const CompletePortfolioForm: React.FC<CompletePortfolioFormProps> = ({ className
           </div>
         </div>
       </div>
+      
+      {/* Analysis Progress Overlay */}
+      {analysisState.isAnalyzing && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-8">
+            <div className="text-center">
+              {/* Analysis Icon */}
+              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-6 mx-auto">
+                <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+              </div>
+              
+              {/* Progress Title */}
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">
+                Analyzing Your Portfolio
+              </h2>
+              
+              {/* Progress Message */}
+              <p className="text-gray-600 mb-6">
+                {analysisState.message}
+              </p>
+              
+              {/* Progress Bar */}
+              <div className="w-full bg-gray-200 rounded-full h-3 mb-4">
+                <div
+                  className="bg-blue-600 h-3 rounded-full transition-all duration-500 ease-out"
+                  style={{ width: `${analysisState.progress}%` }}
+                />
+              </div>
+              
+              {/* Progress Percentage */}
+              <p className="text-sm text-gray-500 mb-6">
+                {analysisState.progress}% Complete
+              </p>
+              
+              {/* Analysis Steps Info */}
+              <div className="text-left bg-gray-50 rounded-lg p-4">
+                <h4 className="font-medium text-gray-900 mb-3">What we're doing:</h4>
+                <div className="space-y-2 text-sm text-gray-600">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${analysisState.progress >= 25 ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+                    <span>Validating portfolio holdings</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${analysisState.progress >= 40 ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+                    <span>Fetching real-time market data</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${analysisState.progress >= 60 ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+                    <span>Running AI analysis models</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${analysisState.progress >= 80 ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+                    <span>Generating personalized insights</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${analysisState.progress >= 95 ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+                    <span>Preparing your analysis report</span>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Success message when complete */}
+              {analysisState.progress === 100 && (
+                <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-center gap-2 text-green-800">
+                    <span className="text-lg">✅</span>
+                    <span className="font-medium">Analysis Complete!</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

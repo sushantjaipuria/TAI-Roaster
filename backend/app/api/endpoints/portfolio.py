@@ -35,6 +35,16 @@ from app.services.portfolio_validator import PortfolioValidationService
 from app.core.config import settings
 from app.utils.file_handler import file_handler
 
+# Import intelligence service and utilities for enhanced analysis
+try:
+    from app.services.intelligence_service import intelligence_service
+    from app.utils.format_converter import convert_enhanced_analysis_to_frontend_format
+    from app.utils.file_saver import analysis_file_saver
+    INTELLIGENCE_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: Intelligence service not available: {e}")
+    INTELLIGENCE_AVAILABLE = False
+
 router = APIRouter()
 
 
@@ -43,6 +53,7 @@ router = APIRouter()
 portfolios_storage: Dict[str, PortfolioInput] = {}
 user_profiles_storage: Dict[str, UserProfile] = {}
 validation_cache: Dict[str, PortfolioValidationResponse] = {}
+analysis_status_storage: Dict[str, Dict] = {}  # For tracking analysis progress
 
 # Service instances
 file_parser = FileParserService()
@@ -251,16 +262,37 @@ async def bulk_upload_portfolio(
 @router.get("/process-status/{process_id}")
 async def get_process_status(process_id: str):
     """
-    Get status of background processing task.
+    Get status of portfolio analysis processing.
+    
+    Returns current status, progress percentage, and status message.
     """
-    # In a real implementation, you'd check a task queue or database
-    # For demo purposes, return a simple response
-    return {
-        "success": True,
-        "processId": process_id,
-        "status": "completed",
-        "message": "Processing completed successfully"
-    }
+    try:
+        # Check if analysis status exists
+        if process_id in analysis_status_storage:
+            status_info = analysis_status_storage[process_id]
+            return {
+                "success": True,
+                "processId": process_id,
+                "status": status_info.get("status", "unknown"),
+                "progress": status_info.get("progress", 0),
+                "message": status_info.get("message", "Processing..."),
+                "timestamp": status_info.get("timestamp", datetime.now().isoformat())
+            }
+        else:
+            # If no status found, assume completed (for backward compatibility)
+            return {
+                "success": True,
+                "processId": process_id,
+                "status": "completed",
+                "progress": 100,
+                "message": "Analysis completed successfully",
+                "timestamp": datetime.now().isoformat()
+            }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get process status: {str(e)}"
+        )
 
 
 @router.post("/analyze")
@@ -268,15 +300,14 @@ async def analyze_portfolio(
     request: AnalysisRequest
 ):
     """
-    Start comprehensive portfolio analysis.
+    Start comprehensive portfolio analysis using intelligence module.
     
-    This endpoint would typically:
-    1. Validate the portfolio
-    2. Fetch current market data
-    3. Generate analysis and recommendations
-    4. Return analysis results
-    
-    For now, returns a mock analysis response.
+    This endpoint:
+    1. Validates the portfolio
+    2. Runs ML-powered analysis using intelligence service
+    3. Converts results to frontend format
+    4. Saves results to processed directory
+    5. Returns analysis ID for frontend consumption
     """
     try:
         # First validate the portfolio
@@ -295,23 +326,133 @@ async def analyze_portfolio(
         # Generate analysis ID
         analysis_id = str(uuid.uuid4())
         
+        # Initialize analysis status tracking
+        analysis_status_storage[analysis_id] = {
+            "status": "processing",
+            "progress": 10,
+            "message": "Initializing portfolio analysis...",
+            "timestamp": datetime.now().isoformat()
+        }
+        
         # Store request for processing
         portfolios_storage[analysis_id] = request.portfolio
         user_profiles_storage[analysis_id] = request.user_profile
         
-        # Return mock analysis (in real implementation, this would trigger actual analysis)
+        # Try to use intelligence service if available
+        if INTELLIGENCE_AVAILABLE and intelligence_service.initialized:
+            try:
+                print(f"🤖 Running enhanced analysis for {analysis_id} using intelligence module")
+                
+                # Update status - starting AI analysis
+                analysis_status_storage[analysis_id].update({
+                    "status": "processing",
+                    "progress": 25,
+                    "message": "Running AI-powered portfolio analysis...",
+                    "timestamp": datetime.now().isoformat()
+                })
+                
+                # Run enhanced analysis using intelligence service
+                enhanced_results = await intelligence_service.analyze_portfolio(
+                    request.portfolio,
+                    request.user_profile
+                )
+                
+                # Update status - generating insights
+                analysis_status_storage[analysis_id].update({
+                    "status": "processing",
+                    "progress": 75,
+                    "message": "Generating insights and recommendations...",
+                    "timestamp": datetime.now().isoformat()
+                })
+                
+                # Convert to frontend format
+                frontend_format = convert_enhanced_analysis_to_frontend_format(enhanced_results)
+                
+                # Update status - finalizing
+                analysis_status_storage[analysis_id].update({
+                    "status": "processing",
+                    "progress": 90,
+                    "message": "Finalizing analysis report...",
+                    "timestamp": datetime.now().isoformat()
+                })
+                
+                # Save to processed directory for frontend consumption
+                save_success, file_path, save_error = analysis_file_saver.save_demo_format_analysis(
+                    frontend_format, 
+                    f"portfolio-analysis-{analysis_id[:8]}"
+                )
+                
+                if save_success:
+                    print(f"✅ Analysis results saved to: {file_path}")
+                else:
+                    print(f"⚠️ Failed to save analysis results: {save_error}")
+                
+                # Mark analysis as completed
+                analysis_status_storage[analysis_id].update({
+                    "status": "completed",
+                    "progress": 100,
+                    "message": "Analysis completed successfully!",
+                    "timestamp": datetime.now().isoformat()
+                })
+                
+                return {
+                    "success": True,
+                    "analysisId": analysis_id,
+                    "message": "Portfolio analysis completed using AI intelligence",
+                    "data": {
+                        "portfolio": request.portfolio,
+                        "validation": validation_response,
+                        "estimatedProcessingTime": "Analysis completed",
+                        "intelligence_used": True,
+                        "file_saved": save_success
+                    }
+                }
+                
+            except Exception as intelligence_error:
+                print(f"⚠️ Intelligence analysis failed, falling back to mock: {intelligence_error}")
+                # Update status to show error occurred but continuing
+                analysis_status_storage[analysis_id].update({
+                    "status": "processing",
+                    "progress": 50,
+                    "message": "AI analysis failed, using fallback method...",
+                    "timestamp": datetime.now().isoformat()
+                })
+                # Fall through to mock analysis
+        
+        # Fallback to mock analysis if intelligence service unavailable
+        print(f"📝 Using mock analysis for {analysis_id} (intelligence not available)")
+        
+        # Update status to show mock analysis completion
+        analysis_status_storage[analysis_id].update({
+            "status": "completed",
+            "progress": 100,
+            "message": "Analysis completed using fallback method",
+            "timestamp": datetime.now().isoformat()
+        })
+        
         return {
             "success": True,
             "analysisId": analysis_id,
-            "message": "Portfolio analysis started",
+            "message": "Portfolio analysis started (mock mode)",
             "data": {
                 "portfolio": request.portfolio,
                 "validation": validation_response,
-                "estimatedProcessingTime": "2-3 minutes"
+                "estimatedProcessingTime": "2-3 minutes",
+                "intelligence_used": False,
+                "note": "Using fallback analysis - intelligence module not available"
             }
         }
         
     except Exception as e:
+        print(f"❌ Portfolio analysis failed for {analysis_id}: {str(e)}")
+        # Update status to show failure
+        if 'analysis_id' in locals() and analysis_id in analysis_status_storage:
+            analysis_status_storage[analysis_id].update({
+                "status": "failed",
+                "progress": 0,
+                "message": f"Analysis failed: {str(e)}",
+                "timestamp": datetime.now().isoformat()
+            })
         raise HTTPException(
             status_code=500,
             detail=f"Failed to analyze portfolio: {str(e)}"

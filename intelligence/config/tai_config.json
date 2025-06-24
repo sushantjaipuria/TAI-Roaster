@@ -1,0 +1,28 @@
+{
+  "risk_thresholds": {
+    "high_concentration": 0.25,
+    "max_single_stock": 0.2,
+    "min_diversification_holdings": 5,
+    "max_sector_allocation": 0.3
+  },
+  "market_cap_thresholds": {
+    "large_cap_min": 50000000000,
+    "mid_cap_min": 10000000000
+  },
+  "performance_targets": {
+    "risk_free_rate": 0.06,
+    "market_return": 0.12,
+    "min_sharpe_ratio": 1.0
+  },
+  "model_weights": {
+    "xgboost": 0.3,
+    "ngboost": 0.3,
+    "quantile": 0.2,
+    "classifier": 0.2
+  },
+  "confidence_thresholds": {
+    "high": 0.8,
+    "medium": 0.6,
+    "low": 0.4
+  }
+}
