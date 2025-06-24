@@ -53,6 +53,7 @@ router = APIRouter()
 portfolios_storage: Dict[str, PortfolioInput] = {}
 user_profiles_storage: Dict[str, UserProfile] = {}
 validation_cache: Dict[str, PortfolioValidationResponse] = {}
+analysis_status_storage: Dict[str, Dict] = {}  # For tracking analysis progress
 
 # Service instances
 file_parser = FileParserService()
@@ -261,16 +262,37 @@ async def bulk_upload_portfolio(
 @router.get("/process-status/{process_id}")
 async def get_process_status(process_id: str):
     """
-    Get status of background processing task.
+    Get status of portfolio analysis processing.
+    
+    Returns current status, progress percentage, and status message.
     """
-    # In a real implementation, you'd check a task queue or database
-    # For demo purposes, return a simple response
-    return {
-        "success": True,
-        "processId": process_id,
-        "status": "completed",
-        "message": "Processing completed successfully"
-    }
+    try:
+        # Check if analysis status exists
+        if process_id in analysis_status_storage:
+            status_info = analysis_status_storage[process_id]
+            return {
+                "success": True,
+                "processId": process_id,
+                "status": status_info.get("status", "unknown"),
+                "progress": status_info.get("progress", 0),
+                "message": status_info.get("message", "Processing..."),
+                "timestamp": status_info.get("timestamp", datetime.now().isoformat())
+            }
+        else:
+            # If no status found, assume completed (for backward compatibility)
+            return {
+                "success": True,
+                "processId": process_id,
+                "status": "completed",
+                "progress": 100,
+                "message": "Analysis completed successfully",
+                "timestamp": datetime.now().isoformat()
+            }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get process status: {str(e)}"
+        )
 
 
 @router.post("/analyze")
@@ -304,6 +326,14 @@ async def analyze_portfolio(
         # Generate analysis ID
         analysis_id = str(uuid.uuid4())
         
+        # Initialize analysis status tracking
+        analysis_status_storage[analysis_id] = {
+            "status": "processing",
+            "progress": 10,
+            "message": "Initializing portfolio analysis...",
+            "timestamp": datetime.now().isoformat()
+        }
+        
         # Store request for processing
         portfolios_storage[analysis_id] = request.portfolio
         user_profiles_storage[analysis_id] = request.user_profile
@@ -313,14 +343,38 @@ async def analyze_portfolio(
             try:
                 print(f"🤖 Running enhanced analysis for {analysis_id} using intelligence module")
                 
+                # Update status - starting AI analysis
+                analysis_status_storage[analysis_id].update({
+                    "status": "processing",
+                    "progress": 25,
+                    "message": "Running AI-powered portfolio analysis...",
+                    "timestamp": datetime.now().isoformat()
+                })
+                
                 # Run enhanced analysis using intelligence service
                 enhanced_results = await intelligence_service.analyze_portfolio(
                     request.portfolio,
                     request.user_profile
                 )
                 
+                # Update status - generating insights
+                analysis_status_storage[analysis_id].update({
+                    "status": "processing",
+                    "progress": 75,
+                    "message": "Generating insights and recommendations...",
+                    "timestamp": datetime.now().isoformat()
+                })
+                
                 # Convert to frontend format
                 frontend_format = convert_enhanced_analysis_to_frontend_format(enhanced_results)
+                
+                # Update status - finalizing
+                analysis_status_storage[analysis_id].update({
+                    "status": "processing",
+                    "progress": 90,
+                    "message": "Finalizing analysis report...",
+                    "timestamp": datetime.now().isoformat()
+                })
                 
                 # Save to processed directory for frontend consumption
                 save_success, file_path, save_error = analysis_file_saver.save_demo_format_analysis(
@@ -332,6 +386,14 @@ async def analyze_portfolio(
                     print(f"✅ Analysis results saved to: {file_path}")
                 else:
                     print(f"⚠️ Failed to save analysis results: {save_error}")
+                
+                # Mark analysis as completed
+                analysis_status_storage[analysis_id].update({
+                    "status": "completed",
+                    "progress": 100,
+                    "message": "Analysis completed successfully!",
+                    "timestamp": datetime.now().isoformat()
+                })
                 
                 return {
                     "success": True,
@@ -348,10 +410,25 @@ async def analyze_portfolio(
                 
             except Exception as intelligence_error:
                 print(f"⚠️ Intelligence analysis failed, falling back to mock: {intelligence_error}")
+                # Update status to show error occurred but continuing
+                analysis_status_storage[analysis_id].update({
+                    "status": "processing",
+                    "progress": 50,
+                    "message": "AI analysis failed, using fallback method...",
+                    "timestamp": datetime.now().isoformat()
+                })
                 # Fall through to mock analysis
         
         # Fallback to mock analysis if intelligence service unavailable
         print(f"📝 Using mock analysis for {analysis_id} (intelligence not available)")
+        
+        # Update status to show mock analysis completion
+        analysis_status_storage[analysis_id].update({
+            "status": "completed",
+            "progress": 100,
+            "message": "Analysis completed using fallback method",
+            "timestamp": datetime.now().isoformat()
+        })
         
         return {
             "success": True,
@@ -368,6 +445,14 @@ async def analyze_portfolio(
         
     except Exception as e:
         print(f"❌ Portfolio analysis failed for {analysis_id}: {str(e)}")
+        # Update status to show failure
+        if 'analysis_id' in locals() and analysis_id in analysis_status_storage:
+            analysis_status_storage[analysis_id].update({
+                "status": "failed",
+                "progress": 0,
+                "message": f"Analysis failed: {str(e)}",
+                "timestamp": datetime.now().isoformat()
+            })
         raise HTTPException(
             status_code=500,
             detail=f"Failed to analyze portfolio: {str(e)}"
