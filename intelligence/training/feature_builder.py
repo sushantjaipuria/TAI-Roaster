@@ -43,10 +43,14 @@ def validate_data_requirements(df: pd.DataFrame) -> bool:
         
     return True
 
-def build_features(df: pd.DataFrame) -> pd.DataFrame:
+def build_features(df: pd.DataFrame, standardize_for_model: bool = True) -> pd.DataFrame:
     """
     Build comprehensive feature set from price data using TA-Lib exclusively
     Implementation of 158+ technical indicators as per plan
+    
+    Args:
+        df: Input DataFrame with OHLCV data
+        standardize_for_model: If True, standardize to exactly 50 features for model compatibility
     """
     if df.empty or len(df) < 20:
         print("[WARNING] Insufficient data for feature engineering")
@@ -61,8 +65,9 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
         # Create a copy to avoid modifying original data
         features_df = df.copy()
         
-        # Create target variable (5-day forward return)
-        features_df['Target_5D_Return'] = features_df['Close'].pct_change(5).shift(-5)
+        # Create target variable (5-day forward return) only if not standardizing for model
+        if not standardize_for_model:
+            features_df['Target_5D_Return'] = features_df['Close'].pct_change(5).shift(-5)
         
         # Basic price features
         features_df = add_basic_features(features_df)
@@ -76,10 +81,16 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
         # Enhanced cleaning and validation
         features_df = clean_and_validate_features(features_df)
         
-        # Remove rows where target is NaN (last 5 rows typically)
-        features_df = features_df.dropna(subset=['Target_5D_Return'])
+        # CRITICAL FIX: Standardize features for model compatibility
+        if standardize_for_model:
+            features_df = standardize_features_for_model(features_df)
+            print(f"[INFO] ✅ Standardized to {len(features_df.columns)} features for model compatibility")
+        else:
+            # Remove rows where target is NaN (last 5 rows typically) only if target exists
+            if 'Target_5D_Return' in features_df.columns:
+                features_df = features_df.dropna(subset=['Target_5D_Return'])
         
-        print(f"[DEBUG] Generated {len(features_df.columns)} features for {len(features_df)} samples")
+        print(f"[DEBUG] Final feature set: {len(features_df.columns)} features for {len(features_df)} samples")
         return features_df
         
     except Exception as e:
@@ -619,3 +630,166 @@ def get_feature_columns() -> List[str]:
     )
     
     return all_features
+
+def standardize_features_for_model(df: pd.DataFrame, required_features: List[str] = None) -> pd.DataFrame:
+    """
+    Standardize generated features to match exactly what the models expect
+    This ensures consistent feature count and order for all stocks
+    
+    Args:
+        df: DataFrame with generated features
+        required_features: List of specific features expected by the model
+        
+    Returns:
+        DataFrame with exactly the required features in the correct order
+    """
+    if required_features is None:
+        # Get the exact 50 features that the models expect (from actual preprocessors.pkl)
+        required_features = [
+            'Open', 'High', 'Low', 'Close', 'SMA_5', 'SMA_10', 'SMA_20', 'EMA_5', 'EMA_10', 'EMA_12',
+            'EMA_20', 'EMA_26', 'WMA_20', 'DEMA_20', 'TEMA_20', 'TRIMA_20', 'KAMA_20', 'MAMA', 'FAMA',
+            'BB_High', 'BB_Mid', 'BB_High_50', 'SAR', 'MIDPOINT', 'MIDPRICE', 'HT_TRENDLINE', 'MOM_10',
+            'MINUS_DI', 'PLUS_DM', 'LINEARREG', 'LINEARREG_INTERCEPT', 'TSF', 'MAX_HIGH_20', 'MIN_LOW_20',
+            'AVGPRICE', 'MEDPRICE', 'TYPPRICE', 'WCLPRICE', 'SQRT_CLOSE', 'LN_CLOSE', 'LOG10_CLOSE',
+            'FLOOR_CLOSE', 'CEIL_CLOSE', 'ADD_HIGH_LOW', 'SIN_CLOSE', 'COS_CLOSE', 'TAN_CLOSE',
+            'ASIN_NORM', 'ACOS_NORM', 'ATAN_CLOSE'
+        ]
+    
+    print(f"[INFO] Standardizing features to match model requirements ({len(required_features)} features)")
+    
+    # Create new DataFrame with exact features in correct order
+    standardized_df = pd.DataFrame(index=df.index)
+    
+    missing_features = []
+    present_features = []
+    
+    for feature in required_features:
+        if feature in df.columns:
+            standardized_df[feature] = df[feature]
+            present_features.append(feature)
+        else:
+            # Add missing feature with intelligent default
+            default_value = _get_intelligent_default(feature, df)
+            standardized_df[feature] = default_value
+            missing_features.append(feature)
+    
+    print(f"[INFO] Features standardized: {len(present_features)} present, {len(missing_features)} missing (filled)")
+    
+    if missing_features:
+        print(f"[DEBUG] Missing features filled: {missing_features[:5]}{'...' if len(missing_features) > 5 else ''}")
+    
+    # Clean final data
+    standardized_df = clean_and_validate_features(standardized_df)
+    
+    # Ensure exactly the right number of features
+    assert len(standardized_df.columns) == len(required_features), \
+        f"Feature count mismatch: got {len(standardized_df.columns)}, expected {len(required_features)}"
+    
+    return standardized_df
+
+def _get_intelligent_default(feature_name: str, existing_df: pd.DataFrame) -> pd.Series:
+    """
+    Generate intelligent default values for missing features based on existing data
+    """
+    # Create series with same index as input
+    default_series = pd.Series(index=existing_df.index, dtype=float)
+    
+    feature_upper = feature_name.upper()
+    
+    # For price-based features, use existing price data if available
+    if feature_name in ['Open', 'High', 'Low', 'Close']:
+        if 'Close' in existing_df.columns:
+            # Use Close price as default for all OHLC
+            default_series = existing_df['Close'].copy()
+        else:
+            default_series = 100.0  # Reasonable default price
+    
+    # For moving averages, approximate using Close price
+    elif any(ma in feature_upper for ma in ['SMA', 'EMA', 'WMA', 'DEMA', 'TEMA', 'TRIMA', 'KAMA']):
+        if 'Close' in existing_df.columns:
+            default_series = existing_df['Close'].copy()
+        else:
+            default_series = 100.0
+    
+    # For Bollinger Bands, use price-based defaults
+    elif 'BB_' in feature_upper:
+        if 'Close' in existing_df.columns:
+            if 'POSITION' in feature_upper:
+                default_series = 0.5  # Middle of BB
+            else:
+                default_series = existing_df['Close'].copy()  # Price level
+        else:
+            default_series = 0.5 if 'POSITION' in feature_upper else 100.0
+    
+    # For oscillators, use neutral values
+    elif any(osc in feature_upper for osc in ['RSI', 'STOCH', 'WILLIAMS']):
+        default_series = 50.0  # Neutral oscillator value
+    
+    # For MACD and momentum indicators
+    elif any(mom in feature_upper for mom in ['MACD', 'ROC', 'MOM']):
+        default_series = 0.0  # Neutral momentum
+    
+    # For ADX and directional indicators
+    elif feature_upper in ['ADX', 'MINUS_DI', 'PLUS_DI']:
+        if 'ADX' in feature_upper:
+            default_series = 25.0  # Neutral trend strength
+        else:
+            default_series = 14.0  # Balanced directional movement
+    
+    # For volatility measures
+    elif feature_upper in ['ATR']:
+        if 'High' in existing_df.columns and 'Low' in existing_df.columns:
+            # Approximate ATR as 2% of average price range
+            avg_range = (existing_df['High'] - existing_df['Low']).mean()
+            default_series = avg_range if not pd.isna(avg_range) else 2.0
+        else:
+            default_series = 2.0  # Default volatility
+    
+    # For volume indicators
+    elif feature_upper in ['OBV']:
+        default_series = 1000000  # Default volume level
+    
+    # For price transforms
+    elif feature_upper in ['TYPPRICE', 'AVGPRICE', 'MIDPOINT', 'MIDPRICE']:
+        if 'Close' in existing_df.columns:
+            default_series = existing_df['Close'].copy()
+        else:
+            default_series = 100.0
+    
+    # For mathematical transforms
+    elif any(math_func in feature_upper for math_func in ['LOG', 'FLOOR', 'CEIL', 'SIN', 'COS', 'TAN']):
+        if 'LOG' in feature_upper:
+            default_series = 4.6  # log10(100)
+        elif any(trig in feature_upper for trig in ['SIN', 'COS', 'TAN', 'ASIN', 'ACOS', 'ATAN']):
+            default_series = 0.0  # Neutral trigonometric value
+        elif 'FLOOR' in feature_upper or 'CEIL' in feature_upper:
+            default_series = 100.0  # Price-based
+        else:
+            default_series = 0.0
+    
+    # For arithmetic operations on High/Low
+    elif 'ADD_HIGH_LOW' in feature_upper:
+        if 'High' in existing_df.columns and 'Low' in existing_df.columns:
+            default_series = existing_df['High'] + existing_df['Low']
+        else:
+            default_series = 200.0  # Approximate sum of high and low
+    
+    # For trend lines and other complex indicators
+    elif any(trend in feature_upper for trend in ['HT_TRENDLINE', 'SAR', 'MAMA', 'FAMA']):
+        if 'Close' in existing_df.columns:
+            default_series = existing_df['Close'].copy()
+        else:
+            default_series = 100.0
+    
+    # Default fallback
+    else:
+        default_series = 0.0
+    
+    # Ensure no NaN values in the default series
+    if isinstance(default_series, pd.Series):
+        default_series = default_series.fillna(0.0)
+    else:
+        # If it's a scalar, broadcast to series
+        default_series = pd.Series(default_series, index=existing_df.index)
+    
+    return default_series

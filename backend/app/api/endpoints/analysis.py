@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi.responses import JSONResponse
 from typing import Dict
 import uuid
 import asyncio
@@ -9,6 +10,7 @@ import re
 import time
 import sys
 from pathlib import Path
+import logging
 
 from app.models.analysis import (
     AnalysisRequest,
@@ -22,6 +24,11 @@ from app.api.endpoints.portfolio import portfolios_storage
 
 # Import file saver for loading actual analysis results
 from app.utils.file_saver import analysis_file_saver
+
+# Import market data service for real-time prices
+from app.services.market_data_service import market_data_service
+
+logger = logging.getLogger(__name__)
 
 # Add enhanced analysis imports
 try:
@@ -477,4 +484,108 @@ async def _fallback_enhanced_analysis(request: EnhancedAnalysisRequest) -> Enhan
         return EnhancedAnalysisResponse(**enhanced_response)
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Fallback enhanced analysis failed: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"Fallback enhanced analysis failed: {str(e)}")
+
+
+@router.get("/market/prices")
+async def get_real_time_prices(tickers: str):
+    """
+    Get real-time prices for multiple stocks
+    
+    Args:
+        tickers: Comma-separated list of stock tickers (e.g., "RELIANCE,TCS,INFY")
+    
+    Returns:
+        Real-time price data for requested stocks
+    """
+    try:
+        ticker_list = [ticker.strip().upper() for ticker in tickers.split(',') if ticker.strip()]
+        
+        if not ticker_list:
+            raise HTTPException(status_code=400, detail="No valid tickers provided")
+        
+        if len(ticker_list) > 50:  # Limit to 50 stocks per request
+            raise HTTPException(status_code=400, detail="Too many tickers requested (max 50)")
+        
+        logger.info(f"🔄 Real-time price request for: {', '.join(ticker_list)}")
+        
+        # Get real-time data
+        portfolio_data = await market_data_service.get_portfolio_data(ticker_list)
+        
+        # Extract just the essential price info
+        price_data = []
+        for data in portfolio_data:
+            price_info = {
+                'ticker': data.get('ticker'),
+                'current_price': data.get('current_price', 0),
+                'change': data.get('change', 0),
+                'change_percent': data.get('change_percent', 0),
+                'volume': data.get('volume', 0),
+                'data_source': data.get('data_source'),
+                'last_updated': data.get('timestamp')
+            }
+            price_data.append(price_info)
+        
+        return {
+            "success": True,
+            "data": price_data,
+            "total_stocks": len(price_data),
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Failed to fetch real-time prices: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch real-time prices: {str(e)}")
+
+
+@router.get("/market/indices")
+async def get_market_indices():
+    """
+    Get current market indices (NIFTY 50, SENSEX, BANK NIFTY)
+    """
+    try:
+        logger.info("🔄 Fetching market indices...")
+        
+        indices_data = await market_data_service.get_market_indices()
+        
+        return {
+            "success": True,
+            "data": indices_data,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to fetch market indices: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch market indices: {str(e)}")
+
+
+@router.get("/market/health")
+async def market_data_health_check():
+    """
+    Check health of market data service
+    """
+    try:
+        health_data = await market_data_service.health_check()
+        
+        status_code = 200 if health_data.get('status') == 'healthy' else 503
+        
+        return JSONResponse(
+            status_code=status_code,
+            content={
+                "success": health_data.get('status') == 'healthy',
+                "health": health_data
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"❌ Market data health check failed: {e}")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "success": False,
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
+        ) 

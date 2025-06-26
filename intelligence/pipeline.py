@@ -284,11 +284,24 @@ def generate_latest_features(ticker: str, user_input: Dict[str, Any] = None):
 def _apply_preprocessing(features_df, logger=None):
     """
     Apply preprocessing pipeline to match training - loads saved preprocessors and feature selection
-    This replicates the original system's preprocessing logic.
+    FIXED: Corrected path and added robust feature standardization
     """
     try:
-        # Load saved preprocessors from enhanced model training using absolute path
-        preprocessors_path = BASE_DIR / "intelligence" / "training" / "intelligence" / "models" / "enhanced" / "preprocessors.pkl"
+        # FIXED: Use correct path for preprocessors (removed duplicate 'intelligence' folder)
+        preprocessors_path = BASE_DIR / "intelligence" / "models" / "enhanced" / "preprocessors.pkl"
+        
+        if not preprocessors_path.exists():
+            # Fallback to training path if main path doesn't exist
+            fallback_path = BASE_DIR / "intelligence" / "training" / "intelligence" / "models" / "enhanced" / "preprocessors.pkl"
+            if fallback_path.exists():
+                preprocessors_path = fallback_path
+                if logger:
+                    logger.warning(f"Using fallback preprocessor path: {preprocessors_path}")
+                else:
+                    print(f"[WARNING] Using fallback preprocessor path: {preprocessors_path}")
+            else:
+                raise FileNotFoundError(f"Preprocessors not found at {preprocessors_path} or {fallback_path}")
+        
         preprocessors = joblib.load(str(preprocessors_path))
         
         if logger:
@@ -296,40 +309,27 @@ def _apply_preprocessing(features_df, logger=None):
         else:
             print(f"[INFO] ✅ Loaded preprocessors from {preprocessors_path}")
         
-        # CRITICAL: Apply feature selection to match training
+        # CRITICAL: Apply feature selection to match training (exactly 50 features)
         if 'feature_columns' in preprocessors:
-            # Get the selected feature columns from training
             selected_features = preprocessors['feature_columns']
             
-            # Ensure all required features are present
-            missing_features = set(selected_features) - set(features_df.columns)
-            if missing_features:
-                warning_msg = f"⚠️ Missing features: {missing_features}"
-                if logger:
-                    logger.warning(warning_msg)
-                else:
-                    print(f"[WARNING] {warning_msg}")
-                # Add missing features with zeros
-                for feature in missing_features:
-                    features_df[feature] = 0
-            
-            # Select only the features used in training
-            available_features = [f for f in selected_features if f in features_df.columns]
-            if len(available_features) < len(selected_features):
-                warning_msg = f"Only {len(available_features)}/{len(selected_features)} features available"
-                if logger:
-                    logger.warning(warning_msg)
-                else:
-                    print(f"[WARNING] {warning_msg}")
-            
-            # Apply feature selection - this is the key step!
-            features_df = features_df[selected_features].copy()
-            
-            success_msg = f"✅ Applied feature selection: {len(selected_features)} features"
             if logger:
-                logger.info(success_msg)
+                logger.info(f"Model expects exactly {len(selected_features)} features")
             else:
-                print(f"[INFO] {success_msg}")
+                print(f"[INFO] Model expects exactly {len(selected_features)} features")
+            
+            # Ensure all required features are present with proper defaults
+            standardized_df = _standardize_features(features_df, selected_features, logger)
+            
+            # Apply feature selection - guaranteed to have correct features and order
+            features_df = standardized_df[selected_features].copy()
+            
+            if logger:
+                logger.info(f"✅ Feature standardization complete: {len(features_df.columns)} features in correct order")
+            else:
+                print(f"[INFO] ✅ Feature standardization complete: {len(features_df.columns)} features in correct order")
+        else:
+            raise ValueError("No 'feature_columns' found in preprocessors - invalid preprocessor file")
         
         # Apply preprocessing steps in the same order as training
         if 'imputer' in preprocessors and preprocessors['imputer']:
@@ -338,6 +338,10 @@ def _apply_preprocessing(features_df, logger=None):
                 columns=features_df.columns,
                 index=features_df.index
             )
+            if logger:
+                logger.debug("Applied imputation")
+            else:
+                print("[DEBUG] Applied imputation")
         
         if 'scaler' in preprocessors and preprocessors['scaler']:
             features_df = pd.DataFrame(
@@ -345,6 +349,14 @@ def _apply_preprocessing(features_df, logger=None):
                 columns=features_df.columns,
                 index=features_df.index
             )
+            if logger:
+                logger.debug("Applied scaling")
+            else:
+                print("[DEBUG] Applied scaling")
+        
+        # Final validation
+        if len(features_df.columns) != len(selected_features):
+            raise ValueError(f"Final feature count mismatch: got {len(features_df.columns)}, expected {len(selected_features)}")
         
         return features_df
         
@@ -354,7 +366,101 @@ def _apply_preprocessing(features_df, logger=None):
             logger.error(error_msg)
         else:
             print(f"[ERROR] {error_msg}")
-        return features_df  # Return original if preprocessing fails
+        
+        # Return None to indicate failure (don't return malformed data)
+        return None
+
+
+def _standardize_features(features_df, required_features, logger=None):
+    """
+    Standardize features to match exactly what the model expects
+    This ensures consistent feature count and order
+    """
+    try:
+        standardized_df = pd.DataFrame(index=features_df.index)
+        
+        missing_count = 0
+        present_count = 0
+        
+        # Add each required feature in the exact order expected
+        for feature in required_features:
+            if feature in features_df.columns:
+                standardized_df[feature] = features_df[feature]
+                present_count += 1
+            else:
+                # Add missing feature with intelligent default value
+                default_value = _get_feature_default_value(feature)
+                standardized_df[feature] = default_value
+                missing_count += 1
+        
+        if logger:
+            logger.info(f"Feature standardization: {present_count} present, {missing_count} missing (filled with defaults)")
+        else:
+            print(f"[INFO] Feature standardization: {present_count} present, {missing_count} missing (filled with defaults)")
+        
+        # Replace any remaining NaN or infinite values
+        standardized_df = standardized_df.replace([np.inf, -np.inf], np.nan)
+        standardized_df = standardized_df.fillna(method='ffill').fillna(method='bfill').fillna(0)
+        
+        return standardized_df
+        
+    except Exception as e:
+        if logger:
+            logger.error(f"Feature standardization failed: {e}")
+        else:
+            print(f"[ERROR] Feature standardization failed: {e}")
+        raise
+
+
+def _get_feature_default_value(feature_name: str) -> float:
+    """
+    Get intelligent default value for missing features
+    Based on the feature type and typical ranges
+    """
+    feature_name = feature_name.upper()
+    
+    # Price-based features - use 1.0 (neutral ratio)
+    if any(keyword in feature_name for keyword in ['RATIO', 'POSITION', 'MULT', 'DIV']):
+        return 1.0
+    
+    # Oscillators (RSI, MFI, etc.) - use neutral value (50)
+    if any(keyword in feature_name for keyword in ['RSI', 'MFI', 'STOCH', 'WILLIAMS']):
+        return 50.0
+    
+    # Bollinger Band position - use middle (0.5)
+    if 'BB_POSITION' in feature_name:
+        return 0.5
+    
+    # Volume features - use 1.0 (neutral)
+    if 'VOLUME' in feature_name or 'OBV' in feature_name:
+        return 1.0
+    
+    # Candlestick patterns - use 0 (no pattern)
+    if 'CDL_' in feature_name:
+        return 0.0
+    
+    # Trend indicators (SMA, EMA, etc.) - use price-based default
+    if any(keyword in feature_name for keyword in ['SMA', 'EMA', 'DEMA', 'TEMA', 'TRIMA', 'KAMA']):
+        return 100.0  # Reasonable stock price
+    
+    # MACD and momentum - use 0 (neutral)
+    if any(keyword in feature_name for keyword in ['MACD', 'MOM', 'ROC', 'CMO', 'TRIX']):
+        return 0.0
+    
+    # Volatility measures - use small positive value
+    if any(keyword in feature_name for keyword in ['ATR', 'STDDEV', 'VAR', 'VOLATILITY']):
+        return 0.1
+    
+    # Mathematical transforms of price - use reasonable defaults
+    if feature_name in ['OPEN', 'HIGH', 'LOW', 'CLOSE']:
+        return 100.0
+    if any(keyword in feature_name for keyword in ['LOG', 'LN', 'SQRT']):
+        return 4.6  # log(100)
+    if any(keyword in feature_name for keyword in ['SIN', 'COS', 'TAN']):
+        return 0.0
+    
+    # Default case - use 0
+    return 0.0
 
 def extract_model_outputs(features_df, prices_df, ticker: str = None):
     """Extract outputs from all models with transparency logging"""
