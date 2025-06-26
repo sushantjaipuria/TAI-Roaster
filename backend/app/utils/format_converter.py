@@ -58,8 +58,9 @@ def convert_enhanced_analysis_to_frontend_format(enhanced_response: Dict[str, An
         # Allocation conversion  
         allocation = convert_allocation_data(enhanced_response.get('allocation', {}))
         
-        # Stocks conversion
-        stocks = convert_stocks_data(enhanced_response.get('stocks', []))
+        # Stocks conversion - check both 'stocks' and 'enhanced_stocks' keys
+        stocks_data = enhanced_response.get('enhanced_stocks', enhanced_response.get('stocks', []))
+        stocks = convert_enhanced_stocks_data(stocks_data)
         
         # Hygiene conversion
         hygiene = convert_hygiene_data(enhanced_response.get('hygiene', {}))
@@ -85,6 +86,9 @@ def convert_enhanced_analysis_to_frontend_format(enhanced_response: Dict[str, An
             "performanceMetrics": performance_metrics,
             "allocation": allocation,
             "stocks": stocks,
+            "enhanced_stocks": stocks_data,  # Pass raw enhanced stocks data to frontend
+            "portfolio_enhanced_metrics": enhanced_response.get('portfolio_enhanced_metrics', {}),
+            "ml_predictions": enhanced_response.get('ml_predictions', []),
             "hygiene": hygiene,
             "rating": rating,
             "actionPlan": action_plan,
@@ -257,7 +261,7 @@ def convert_risk_flags(allocation_data: Dict[str, Any]) -> List[Dict[str, Any]]:
     return risk_flags
 
 def convert_stocks_data(stocks_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Convert enhanced stocks data to frontend stocks format"""
+    """Convert basic stocks data to frontend stocks format"""
     converted_stocks = []
     
     for stock in stocks_data:
@@ -287,6 +291,128 @@ def convert_stocks_data(stocks_data: List[Dict[str, Any]]) -> List[Dict[str, Any
             continue
     
     return converted_stocks
+
+def convert_enhanced_stocks_data(enhanced_stocks_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Convert enhanced stocks data with detailed analysis to frontend format"""
+    converted_stocks = []
+    
+    for stock in enhanced_stocks_data:
+        try:
+            # Map recommendation enum to lowercase
+            recommendation = stock.get('recommendation', 'HOLD')
+            if hasattr(recommendation, 'value'):
+                recommendation = recommendation.value.lower()
+            else:
+                recommendation = str(recommendation).lower()
+            
+            # Calculate scores and metrics
+            overall_score = stock.get('overall_score', 50.0)
+            current_price = stock.get('current_price', stock.get('avg_buy_price', 0))
+            target_price = stock.get('target_price', current_price * 1.1)
+            upside_potential = stock.get('upside_potential', 10.0)
+            
+            # Build comprehensive stock data
+            converted_stock = {
+                "ticker": stock.get('ticker', '').replace('.NS', ''),
+                "companyName": stock.get('company_name', stock.get('ticker', '')),
+                "sector": stock.get('sector', 'Unknown'),
+                "score": int(overall_score),
+                "recommendation": recommendation,
+                "reasoning": build_reasoning_from_enhanced_data(stock),
+                "currentPrice": float(current_price),
+                "targetPrice": float(target_price),
+                "upside": float(upside_potential),
+                "quantity": stock.get('quantity', 0),
+                "avgPrice": float(stock.get('avg_buy_price', 0)),
+                "investmentAmount": float(stock.get('investment_amount', 0)),
+                "currentValue": float(stock.get('current_value', 0)),
+                "unrealizedPnL": float(stock.get('unrealized_pnl', 0)),
+                "weight": float(stock.get('weight', 0)),
+                
+                # Enhanced multi-factor scores
+                "fundamentalScore": float(stock.get('fundamental_score', 50.0)),
+                "technicalScore": float(stock.get('technical_score', 50.0)),
+                "momentumScore": float(stock.get('momentum_score', 50.0)),
+                "valueScore": float(stock.get('value_score', 50.0)),
+                "qualityScore": float(stock.get('quality_score', 50.0)),
+                "sentimentScore": float(stock.get('sentiment_score', 50.0)),
+                
+                # Risk metrics
+                "beta": float(stock.get('beta', 1.0)),
+                "volatility": float(stock.get('volatility', 0.2)),
+                "maxDrawdown": float(stock.get('max_drawdown', -0.1)),
+                "confidenceLevel": stock.get('confidence_level', 'MEDIUM'),
+                
+                # Insights
+                "keyStrengths": stock.get('key_strengths', []),
+                "keyConcerns": stock.get('key_concerns', []),
+                "catalysts": stock.get('catalysts', []),
+                "risks": stock.get('risks', []),
+                "businessStory": stock.get('business_story', ''),
+                "investmentThesis": stock.get('investment_thesis', ''),
+                
+                # Technical & Fundamental Analysis
+                "technicalAnalysis": stock.get('technical_analysis', {}),
+                "fundamentalAnalysis": stock.get('fundamental_analysis', {}),
+                
+                # Enhanced analysis metadata
+                "enhancedAnalysisAvailable": stock.get('enhanced_analysis_available', False),
+                "analysisTimestamp": stock.get('analysis_timestamp', ''),
+                
+                # Broker targets (for compatibility)
+                "brokerTargets": {
+                    "averageTarget": float(target_price),
+                    "upside": float(upside_potential)
+                }
+            }
+            converted_stocks.append(converted_stock)
+            
+        except Exception as e:
+            logger.error(f"Error converting enhanced stock {stock.get('ticker', 'unknown')}: {e}")
+            continue
+    
+    return converted_stocks
+
+def build_reasoning_from_enhanced_data(stock: Dict[str, Any]) -> str:
+    """Build reasoning text from enhanced stock analysis data"""
+    try:
+        ticker = stock.get('ticker', '')
+        overall_score = stock.get('overall_score', 50.0)
+        recommendation = stock.get('recommendation', 'HOLD')
+        confidence = stock.get('confidence_level', 'MEDIUM')
+        
+        # Get key insights
+        strengths = stock.get('key_strengths', [])
+        concerns = stock.get('key_concerns', [])
+        
+        reasoning_parts = []
+        
+        # Overall assessment
+        if overall_score >= 70:
+            reasoning_parts.append(f"Strong overall score of {overall_score:.0f} indicates good investment potential.")
+        elif overall_score >= 50:
+            reasoning_parts.append(f"Moderate score of {overall_score:.0f} suggests balanced risk-reward profile.")
+        else:
+            reasoning_parts.append(f"Below-average score of {overall_score:.0f} indicates higher risk.")
+        
+        # Add strengths
+        if strengths:
+            top_strength = strengths[0] if isinstance(strengths, list) else str(strengths)
+            reasoning_parts.append(f"Key strength: {top_strength}")
+        
+        # Add concerns
+        if concerns:
+            top_concern = concerns[0] if isinstance(concerns, list) else str(concerns)
+            reasoning_parts.append(f"Key concern: {top_concern}")
+        
+        # Confidence level
+        reasoning_parts.append(f"{confidence.lower()} confidence in analysis.")
+        
+        return " ".join(reasoning_parts)
+        
+    except Exception as e:
+        logger.error(f"Error building reasoning for {stock.get('ticker', 'unknown')}: {e}")
+        return f"Enhanced analysis completed for {stock.get('ticker', '')} with {stock.get('recommendation', 'HOLD')} recommendation."
 
 def convert_hygiene_data(hygiene_data: Dict[str, Any]) -> Dict[str, Any]:
     """Convert hygiene data to frontend format"""
@@ -320,18 +446,37 @@ def convert_hygiene_data(hygiene_data: Dict[str, Any]) -> Dict[str, Any]:
 def convert_rating_data(rating_data: Dict[str, Any], tai_scores: Dict[str, Any]) -> Dict[str, Any]:
     """Convert rating data to frontend format"""
     try:
+        import math
+        
+        # Helper function to safely convert values and handle NaN
+        def safe_convert(value, default, converter=float):
+            if value is None or (isinstance(value, float) and math.isnan(value)):
+                return default
+            try:
+                return converter(value)
+            except (ValueError, TypeError):
+                return default
+        
         return {
-            "taiScore": int(tai_scores.get('overall_score', 75)),
-            "returnQuality": float(tai_scores.get('performance_score', 80)),
-            "riskManagement": float(tai_scores.get('risk_management_score', 75)),
-            "diversification": float(tai_scores.get('diversification_score', 80)),
-            "costEfficiency": float(tai_scores.get('cost_efficiency_score', 85)),
-            "liquidityScore": float(tai_scores.get('liquidity_score', 75)),
+            "taiScore": safe_convert(tai_scores.get('overall_score'), 75, int),
+            "returnQuality": safe_convert(tai_scores.get('performance_score'), 80.0),
+            "riskManagement": safe_convert(tai_scores.get('risk_management_score'), 75.0),
+            "diversification": safe_convert(tai_scores.get('diversification_score'), 80.0),
+            "costEfficiency": safe_convert(tai_scores.get('cost_efficiency_score'), 85.0),
+            "liquidityScore": safe_convert(tai_scores.get('liquidity_score'), 75.0),
             "proTips": convert_pro_tips(rating_data.get('pro_tips', []))
         }
     except Exception as e:
         logger.error(f"Error converting rating data: {e}")
-        return {}
+        return {
+            "taiScore": 75,
+            "returnQuality": 80.0,
+            "riskManagement": 75.0,
+            "diversification": 80.0,
+            "costEfficiency": 85.0,
+            "liquidityScore": 75.0,
+            "proTips": []
+        }
 
 def convert_pro_tips(pro_tips: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Convert pro tips to frontend format"""
@@ -427,9 +572,9 @@ def convert_improvements(action_plan_data: Dict[str, Any]) -> List[Dict[str, Any
 def create_fallback_frontend_format() -> Dict[str, Any]:
     """Create a safe fallback format if conversion fails"""
     return {
-        "overallScore": 75.0,
-        "riskLevel": "medium",
-        "diversificationScore": 70.0,
+        "overallScore": 0.0,  # Show 0 to indicate no analysis
+        "riskLevel": "unknown",
+        "diversificationScore": 0.0,
         "analysisDate": datetime.now().strftime('%Y-%m-%d'),
         "portfolioName": "Portfolio Analysis",
         "totalInvested": 0,
@@ -444,6 +589,9 @@ def create_fallback_frontend_format() -> Dict[str, Any]:
             "correlation": {"averageCorrelation": 0, "highlyCorrelatedPairs": []}
         },
         "stocks": [],
+        "enhanced_stocks": [],  # Empty to show no enhanced analysis
+        "portfolio_enhanced_metrics": {},
+        "ml_predictions": [],
         "hygiene": {
             "pennyStocks": {"count": 0, "tickers": [], "impact": "Analysis unavailable"},
             "excessiveCash": {"percentage": 0, "isExcessive": False, "suggestion": ""},
@@ -451,12 +599,12 @@ def create_fallback_frontend_format() -> Dict[str, Any]:
             "lowLiquidityStocks": {"count": 0, "tickers": [], "impact": "Analysis unavailable"}
         },
         "rating": {
-            "taiScore": 75,
-            "returnQuality": 75.0,
-            "riskManagement": 75.0,
-            "diversification": 70.0,
-            "costEfficiency": 80.0,
-            "liquidityScore": 75.0,
+            "taiScore": 0,  # Show 0 to indicate no analysis
+            "returnQuality": 0.0,
+            "riskManagement": 0.0,
+            "diversification": 0.0,
+            "costEfficiency": 0.0,
+            "liquidityScore": 0.0,
             "proTips": []
         },
         "actionPlan": {
@@ -465,7 +613,7 @@ def create_fallback_frontend_format() -> Dict[str, Any]:
             "cons": [],
             "improvements": []
         },
-        "recommendations": ["Analysis completed - review results"],
+        "recommendations": ["Enhanced analysis not available - using fallback data"],
         "riskWarnings": [],
         "opportunities": []
     }

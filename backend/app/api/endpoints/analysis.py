@@ -1,6 +1,6 @@
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Query, Body
 from fastapi.responses import JSONResponse
-from typing import Dict
+from typing import Dict, Any
 import uuid
 import asyncio
 import json
@@ -19,6 +19,7 @@ from app.models.analysis import (
     AnalysisResultResponse,
     AnalysisStatus
 )
+from app.schemas.input import PortfolioInput, UserProfile
 from app.api.endpoints.onboarding import sessions_storage
 from app.api.endpoints.portfolio import portfolios_storage
 
@@ -27,6 +28,9 @@ from app.utils.file_saver import analysis_file_saver
 
 # Import market data service for real-time prices
 from app.services.market_data_service import market_data_service
+
+# Import enhanced stock analyzer
+from app.services.enhanced_stock_analyzer import enhanced_stock_analyzer
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +43,6 @@ try:
         AnalysisError
     )
     from app.services.intelligence_service import intelligence_service
-    from app.services.market_data_service import market_data_service
     from app.core.ml_models import model_manager
     ENHANCED_ANALYSIS_AVAILABLE = True
 except ImportError as e:
@@ -118,12 +121,18 @@ def load_analysis_by_id(analysis_id: str):
         if success:
             return analysis_data
         
-        # Strategy 3: Try with just the truncated ID
+        # Strategy 3: Try with demo-portfolio-analysis prefix (new format)
+        demo_portfolio_analysis_id = f"demo-portfolio-analysis-{truncated_id}"
+        success, analysis_data, error = analysis_file_saver.get_analysis_by_id(demo_portfolio_analysis_id)
+        if success:
+            return analysis_data
+        
+        # Strategy 4: Try with just the truncated ID
         success, analysis_data, error = analysis_file_saver.get_analysis_by_id(truncated_id)
         if success:
             return analysis_data
         
-        # Strategy 4: Fallback to demo analysis if nothing found
+        # Strategy 5: Fallback to demo analysis if nothing found
         print(f"Warning: No analysis found for ID {analysis_id}, falling back to demo data")
         return load_demo_analysis()
         
@@ -219,12 +228,29 @@ async def get_analysis_results(request_id: str):
         # Load analysis data by ID (tries multiple strategies to find the file)
         analysis_data = load_analysis_by_id(request_id)
         
+        # Clean analysis data of any NaN values
+        import math
+        import json
+        
+        def clean_nan_values(obj):
+            """Recursively clean NaN values from a dictionary or list"""
+            if isinstance(obj, dict):
+                return {k: clean_nan_values(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [clean_nan_values(item) for item in obj]
+            elif isinstance(obj, float) and math.isnan(obj):
+                return None  # or 0, depending on preference
+            else:
+                return obj
+        
+        cleaned_analysis_data = clean_nan_values(analysis_data)
+        
         # Return analysis data for the request
         from fastapi.responses import JSONResponse
         return JSONResponse(content={
             "success": True,
             "request_id": request_id,
-            "analysis": analysis_data,  # Keep original camelCase for frontend
+            "analysis": cleaned_analysis_data,  # Keep original camelCase for frontend
             "completed_at": datetime.now().isoformat()
         })
         
@@ -588,4 +614,192 @@ async def market_data_health_check():
                 "error": str(e),
                 "timestamp": datetime.now().isoformat()
             }
+        )
+
+
+@router.get("/stock/enhanced/{ticker}")
+async def get_enhanced_stock_analysis(
+    ticker: str,
+    quantity: int = Query(0, description="Number of shares held"),
+    avg_price: float = Query(0.0, description="Average purchase price")
+):
+    """
+    Get comprehensive enhanced analysis for a single stock
+    
+    Provides detailed technical and fundamental analysis including:
+    - Multi-factor scoring (Technical, Fundamental, Momentum, Value, Quality, Sentiment)
+    - Risk metrics and projections
+    - Key insights and recommendations
+    - Sector comparison
+    - AI-powered commentary
+    """
+    try:
+        logger.info(f"🔍 Enhanced stock analysis request for {ticker}")
+        
+        # Perform comprehensive analysis
+        enhanced_insight = await enhanced_stock_analyzer.analyze_stock(
+            ticker=ticker,
+            quantity=quantity,
+            avg_price=avg_price
+        )
+        
+        # Convert to dictionary for JSON response
+        response_data = enhanced_insight.to_dict()
+        
+        logger.info(f"✅ Enhanced analysis completed for {ticker}")
+        return {
+            "status": "success",
+            "data": response_data,
+            "message": f"Enhanced analysis completed for {ticker}",
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Enhanced stock analysis failed for {ticker}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Enhanced stock analysis failed: {str(e)}"
+        )
+
+@router.post("/stocks/enhanced/batch")
+async def get_enhanced_stocks_analysis(
+    tickers_data: Dict[str, Any] = Body(..., description="Dictionary of ticker data")
+):
+    """
+    Get enhanced analysis for multiple stocks in batch
+    
+    Request body should contain:
+    {
+        "stocks": [
+            {"ticker": "RELIANCE", "quantity": 100, "avg_price": 2400},
+            {"ticker": "TCS", "quantity": 50, "avg_price": 3500}
+        ]
+    }
+    """
+    try:
+        stocks = tickers_data.get("stocks", [])
+        logger.info(f"🔍 Batch enhanced analysis for {len(stocks)} stocks")
+        
+        if not stocks:
+            raise HTTPException(status_code=400, detail="No stocks provided for analysis")
+        
+        # Perform analysis for all stocks concurrently
+        tasks = []
+        for stock in stocks:
+            ticker = stock.get("ticker")
+            quantity = stock.get("quantity", 0)
+            avg_price = stock.get("avg_price", 0.0)
+            
+            if not ticker:
+                continue
+                
+            task = enhanced_stock_analyzer.analyze_stock(
+                ticker=ticker,
+                quantity=quantity,
+                avg_price=avg_price
+            )
+            tasks.append(task)
+        
+        # Execute all analyses concurrently
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Process results
+        enhanced_analyses = []
+        failed_analyses = []
+        
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                failed_analyses.append({
+                    "ticker": stocks[i].get("ticker"),
+                    "error": str(result)
+                })
+            else:
+                enhanced_analyses.append(result.to_dict())
+        
+        logger.info(f"✅ Batch analysis completed: {len(enhanced_analyses)} successful, {len(failed_analyses)} failed")
+        
+        return {
+            "status": "success",
+            "data": {
+                "enhanced_analyses": enhanced_analyses,
+                "failed_analyses": failed_analyses,
+                "summary": {
+                    "total_requested": len(stocks),
+                    "successful": len(enhanced_analyses),
+                    "failed": len(failed_analyses)
+                }
+            },
+            "message": f"Batch enhanced analysis completed for {len(stocks)} stocks",
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Batch enhanced analysis failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Batch enhanced analysis failed: {str(e)}"
+        )
+
+@router.post("/portfolio/enhanced")
+async def analyze_portfolio_enhanced(
+    portfolio_input: PortfolioInput,
+    background_tasks: BackgroundTasks,
+    user_profile: UserProfile = Body(...)
+):
+    """
+    Perform enhanced portfolio analysis with detailed individual stock insights
+    
+    This endpoint provides:
+    - Standard portfolio analysis
+    - Detailed technical and fundamental analysis for each stock
+    - Multi-factor scoring system
+    - Risk metrics and projections
+    - AI-powered insights and recommendations
+    """
+    try:
+        logger.info("🚀 Enhanced portfolio analysis request received")
+        
+        if not ENHANCED_ANALYSIS_AVAILABLE:
+            raise HTTPException(
+                status_code=503, 
+                detail="Enhanced analysis service temporarily unavailable"
+            )
+        
+        # Validate portfolio input
+        if not portfolio_input.holdings:
+            raise HTTPException(
+                status_code=400,
+                detail="Portfolio must contain at least one holding"
+            )
+        
+        # Generate unique analysis ID
+        analysis_id = f"enhanced_{uuid.uuid4().hex[:8]}"
+        
+        # Perform enhanced analysis
+        enhanced_analysis = await intelligence_service.get_enhanced_portfolio_analysis(
+            portfolio_input, user_profile
+        )
+        
+        # Add metadata
+        enhanced_analysis["analysis_id"] = analysis_id
+        enhanced_analysis["analysis_type"] = "enhanced_portfolio"
+        enhanced_analysis["request_timestamp"] = datetime.now().isoformat()
+        
+        logger.info(f"✅ Enhanced portfolio analysis completed (ID: {analysis_id})")
+        
+        return {
+            "status": "success",
+            "analysis_id": analysis_id,
+            "data": enhanced_analysis,
+            "message": "Enhanced portfolio analysis completed successfully",
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Enhanced portfolio analysis failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Enhanced portfolio analysis failed: {str(e)}"
         ) 

@@ -1,26 +1,33 @@
 import React, { useState } from 'react'
-import { AlertTriangle, TrendingUp, Shield, BarChart3 } from 'lucide-react'
+import { AlertTriangle, TrendingUp, Shield, BarChart3, AlertCircle } from 'lucide-react'
 import { ResultsComponentProps } from '../../lib/types-results'
 import PieChart from '../charts/PieChart'
 
 export default function AllocationDashboard({ data }: ResultsComponentProps) {
   const [activeTab, setActiveTab] = useState<'sectors' | 'marketCap' | 'assetTypes'>('sectors')
 
+  // Check if we have sufficient allocation data
+  const hasAllocationData = data.allocation && 
+    data.allocation.current && 
+    (Object.keys(data.allocation.current.sectors || {}).length > 0 || 
+     Object.keys(data.allocation.current.marketCap || {}).length > 0 ||
+     Object.keys(data.allocation.current.assetTypes || {}).length > 0)
+
   // Convert allocation data to chart format
-  const sectorData = Object.entries(data.allocation.current.sectors).map(([name, value]) => ({
+  const sectorData = Object.entries(data.allocation?.current?.sectors || {}).map(([name, value]) => ({
     name,
     value: Number(value)
-  }))
+  })).filter(item => item.value > 0)
 
-  const marketCapData = Object.entries(data.allocation.current.marketCap).map(([name, value]) => ({
+  const marketCapData = Object.entries(data.allocation?.current?.marketCap || {}).map(([name, value]) => ({
     name: name.charAt(0).toUpperCase() + name.slice(1),
     value: Number(value)
-  }))
+  })).filter(item => item.value > 0)
 
-  const assetTypeData = Object.entries(data.allocation.current.assetTypes).map(([name, value]) => ({
+  const assetTypeData = Object.entries(data.allocation?.current?.assetTypes || {}).map(([name, value]) => ({
     name,
     value: Number(value)
-  }))
+  })).filter(item => item.value > 0)
 
   // Get concentration flags
   const concentrationFlags = data.allocation.concentration.riskFlags

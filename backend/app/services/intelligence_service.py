@@ -27,6 +27,7 @@ except ImportError as e:
 
 from app.schemas.input import PortfolioInput
 from app.models.onboarding import UserProfileRequest as UserProfile
+from .enhanced_stock_analyzer import enhanced_stock_analyzer
 
 logger = logging.getLogger(__name__)
 
@@ -391,7 +392,13 @@ class IntelligenceService:
                 'ml_prediction': stock.get("expected_return", 0.08),
                 'confidence_score': stock.get("confidence_score", 0.75),
                 'recommendation': stock.get("recommendation", "HOLD"),
-                'unrealized_pnl': holding_details.get("unrealized_pnl", 0)
+                'unrealized_pnl': holding_details.get("unrealized_pnl", 0),
+                
+                # Add enhanced analysis placeholder - will be populated in enhanced mode
+                'enhanced_analysis_available': True,
+                'fundamental_score': 75.0,  # Placeholder
+                'technical_score': 70.0,    # Placeholder
+                'overall_score': 72.5,      # Placeholder
             }
             enhanced_stocks.append(enhanced_stock)
         
@@ -537,6 +544,239 @@ class IntelligenceService:
             enhanced_stocks.append(stock_analysis)
         
         return enhanced_stocks
+
+    async def get_enhanced_portfolio_analysis(
+        self, 
+        portfolio_input: PortfolioInput, 
+        user_profile: UserProfile
+    ) -> Dict[str, Any]:
+        """
+        Get enhanced portfolio analysis with detailed individual stock analysis
+        """
+        try:
+            logger.info("🚀 Starting enhanced portfolio analysis with detailed stock insights")
+            
+            # First get the standard portfolio analysis
+            standard_analysis = await self.analyze_portfolio(portfolio_input, user_profile)
+            
+            # Extract holdings for enhanced analysis
+            holdings = portfolio_input.holdings
+            
+            # Perform enhanced analysis for each stock
+            logger.info(f"📈 Performing enhanced analysis for {len(holdings)} stocks")
+            
+            enhanced_stock_tasks = []
+            for holding in holdings:
+                task = enhanced_stock_analyzer.analyze_stock(
+                    ticker=holding.ticker,
+                    quantity=holding.quantity,
+                    avg_price=holding.avg_buy_price
+                )
+                enhanced_stock_tasks.append(task)
+            
+            # Execute enhanced analyses concurrently
+            enhanced_results = await asyncio.gather(*enhanced_stock_tasks, return_exceptions=True)
+            
+            # Process enhanced results
+            enhanced_stocks = []
+            for i, result in enumerate(enhanced_results):
+                holding = holdings[i]
+                
+                if isinstance(result, Exception):
+                    logger.warning(f"Enhanced analysis failed for {holding.ticker}: {result}")
+                    # Create fallback enhanced stock data
+                    enhanced_stock = self._create_fallback_enhanced_stock(holding, standard_analysis)
+                else:
+                    # Convert enhanced analysis to portfolio context
+                    enhanced_stock = self._convert_enhanced_analysis_to_portfolio_context(
+                        result, holding, standard_analysis
+                    )
+                
+                enhanced_stocks.append(enhanced_stock)
+            
+            # Enhance the standard analysis with detailed stock insights
+            enhanced_analysis = standard_analysis.copy()
+            enhanced_analysis['enhanced_stocks'] = enhanced_stocks
+            enhanced_analysis['enhanced_analysis_metadata'] = {
+                'total_stocks_analyzed': len(holdings),
+                'successful_enhanced_analyses': len([r for r in enhanced_results if not isinstance(r, Exception)]),
+                'analysis_type': 'enhanced_portfolio_with_detailed_stocks',
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            # Calculate portfolio-level enhanced metrics
+            enhanced_analysis['portfolio_enhanced_metrics'] = self._calculate_portfolio_enhanced_metrics(enhanced_stocks)
+            
+            logger.info("✅ Enhanced portfolio analysis completed successfully")
+            return enhanced_analysis
+            
+        except Exception as e:
+            logger.error(f"❌ Enhanced portfolio analysis failed: {e}")
+            # Fallback to standard analysis
+            return await self.analyze_portfolio(portfolio_input, user_profile)
+    
+    def _convert_enhanced_analysis_to_portfolio_context(
+        self, 
+        enhanced_insight, 
+        holding, 
+        standard_analysis
+    ) -> Dict[str, Any]:
+        """Convert enhanced stock insight to portfolio context"""
+        try:
+            current_value = holding.quantity * (holding.current_price or holding.avg_buy_price)
+            investment_amount = holding.quantity * holding.avg_buy_price
+            unrealized_pnl = current_value - investment_amount
+            
+            # Calculate portfolio weight safely
+            portfolio_total_value = sum(h.quantity * (h.current_price or h.avg_buy_price) for h in standard_analysis.get('stocks', []))
+            if portfolio_total_value == 0:
+                portfolio_weight = 0.0
+            else:
+                portfolio_weight = (current_value / portfolio_total_value) * 100
+            
+            return {
+                # Basic holding information
+                'ticker': enhanced_insight.ticker,
+                'company_name': enhanced_insight.company_name,
+                'sector': enhanced_insight.sector,
+                'quantity': holding.quantity,
+                'avg_buy_price': holding.avg_buy_price,
+                'current_price': enhanced_insight.current_price,
+                'investment_amount': investment_amount,
+                'current_value': current_value,
+                'unrealized_pnl': unrealized_pnl,
+                'weight': portfolio_weight,
+                
+                # Enhanced multi-factor scores
+                'fundamental_score': enhanced_insight.fundamental_score,
+                'technical_score': enhanced_insight.technical_score,
+                'momentum_score': enhanced_insight.momentum_score,
+                'value_score': enhanced_insight.value_score,
+                'quality_score': enhanced_insight.quality_score,
+                'sentiment_score': enhanced_insight.sentiment_score,
+                'overall_score': enhanced_insight.overall_score,
+                
+                # Risk and projections
+                'beta': enhanced_insight.beta,
+                'volatility': enhanced_insight.volatility,
+                'max_drawdown': enhanced_insight.max_drawdown,
+                'target_price': enhanced_insight.target_price,
+                'upside_potential': enhanced_insight.upside_potential,
+                'confidence_level': enhanced_insight.confidence_level,
+                
+                # Insights and recommendations
+                'recommendation': enhanced_insight.recommendation,
+                'key_strengths': enhanced_insight.key_strengths,
+                'key_concerns': enhanced_insight.key_concerns,
+                'catalysts': enhanced_insight.catalysts,
+                'risks': enhanced_insight.risks,
+                
+                # Detailed analysis
+                'technical_analysis': enhanced_insight.technical_analysis.to_dict() if hasattr(enhanced_insight.technical_analysis, 'to_dict') else enhanced_insight.technical_analysis.__dict__,
+                'fundamental_analysis': enhanced_insight.fundamental_analysis.to_dict() if hasattr(enhanced_insight.fundamental_analysis, 'to_dict') else enhanced_insight.fundamental_analysis.__dict__,
+                
+                # AI commentary
+                'business_story': enhanced_insight.business_story,
+                'investment_thesis': enhanced_insight.investment_thesis,
+                
+                # Comparative analysis
+                'sector_comparison': enhanced_insight.sector_comparison,
+                
+                # Enhanced analysis metadata
+                'enhanced_analysis_available': True,
+                'analysis_timestamp': datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to convert enhanced analysis for {holding.ticker}: {e}")
+            return self._create_fallback_enhanced_stock(holding, standard_analysis)
+    
+    def _create_fallback_enhanced_stock(self, holding, standard_analysis) -> Dict[str, Any]:
+        """Create fallback enhanced stock data when detailed analysis fails"""
+        current_value = holding.quantity * (holding.current_price or holding.avg_buy_price)
+        investment_amount = holding.quantity * holding.avg_buy_price
+        
+        return {
+            'ticker': holding.ticker,
+            'company_name': holding.ticker,
+            'sector': 'Unknown',
+            'quantity': holding.quantity,
+            'avg_buy_price': holding.avg_buy_price,
+            'current_price': holding.current_price or holding.avg_buy_price,
+            'investment_amount': investment_amount,
+            'current_value': current_value,
+            'unrealized_pnl': current_value - investment_amount,
+            'weight': 10.0,  # Placeholder
+            
+            # Default scores
+            'fundamental_score': 50.0,
+            'technical_score': 50.0,
+            'momentum_score': 50.0,
+            'value_score': 50.0,
+            'quality_score': 50.0,
+            'sentiment_score': 50.0,
+            'overall_score': 50.0,
+            
+            'recommendation': 'HOLD',
+            'key_strengths': ['Analysis pending'],
+            'key_concerns': ['Limited data available'],
+            'enhanced_analysis_available': False,
+            'analysis_timestamp': datetime.now().isoformat()
+        }
+    
+    def _calculate_portfolio_enhanced_metrics(self, enhanced_stocks) -> Dict[str, Any]:
+        """Calculate portfolio-level metrics from enhanced stock analyses"""
+        try:
+            # Filter stocks with successful analysis
+            valid_stocks = [s for s in enhanced_stocks if s.get('enhanced_analysis_available', False)]
+            
+            if not valid_stocks:
+                return {}
+            
+            # Calculate weighted averages
+            total_value = sum(s['current_value'] for s in valid_stocks)
+            
+            # Handle division by zero
+            if total_value == 0:
+                logger.warning("Total portfolio value is zero, using equal weights for scoring")
+                weighted_fundamental_score = sum(s['fundamental_score'] for s in valid_stocks) / len(valid_stocks)
+                weighted_technical_score = sum(s['technical_score'] for s in valid_stocks) / len(valid_stocks)
+                weighted_overall_score = sum(s['overall_score'] for s in valid_stocks) / len(valid_stocks)
+            else:
+                weighted_fundamental_score = sum(s['fundamental_score'] * s['current_value'] for s in valid_stocks) / total_value
+                weighted_technical_score = sum(s['technical_score'] * s['current_value'] for s in valid_stocks) / total_value
+                weighted_overall_score = sum(s['overall_score'] * s['current_value'] for s in valid_stocks) / total_value
+            
+            # Risk metrics
+            avg_beta = sum(s.get('beta', 1.0) for s in valid_stocks) / len(valid_stocks)
+            avg_volatility = sum(s.get('volatility', 0.2) for s in valid_stocks) / len(valid_stocks)
+            
+            # Recommendation distribution
+            recommendations = [s['recommendation'] for s in valid_stocks]
+            rec_counts = {
+                'STRONG_BUY': recommendations.count('STRONG_BUY'),
+                'BUY': recommendations.count('BUY'),
+                'HOLD': recommendations.count('HOLD'),
+                'SELL': recommendations.count('SELL'),
+                'STRONG_SELL': recommendations.count('STRONG_SELL')
+            }
+            
+            return {
+                'weighted_fundamental_score': round(weighted_fundamental_score, 1),
+                'weighted_technical_score': round(weighted_technical_score, 1),
+                'weighted_overall_score': round(weighted_overall_score, 1),
+                'portfolio_beta': round(avg_beta, 2),
+                'portfolio_volatility': round(avg_volatility, 3),
+                'recommendation_distribution': rec_counts,
+                'total_upside_potential': sum(s.get('upside_potential', 0) * s['weight'] / 100 for s in valid_stocks),
+                'high_conviction_stocks': len([s for s in valid_stocks if s.get('confidence_level') == 'HIGH']),
+                'stocks_with_catalysts': len([s for s in valid_stocks if s.get('catalysts', [])]),
+                'stocks_with_risks': len([s for s in valid_stocks if s.get('risks', [])])
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to calculate enhanced portfolio metrics: {e}")
+            return {}
 
 
 # Create singleton instance

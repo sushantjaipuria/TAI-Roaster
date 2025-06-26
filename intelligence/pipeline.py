@@ -332,31 +332,74 @@ def _apply_preprocessing(features_df, logger=None):
             raise ValueError("No 'feature_columns' found in preprocessors - invalid preprocessor file")
         
         # Apply preprocessing steps in the same order as training
-        if 'imputer' in preprocessors and preprocessors['imputer']:
-            features_df = pd.DataFrame(
-                preprocessors['imputer'].transform(features_df),
-                columns=features_df.columns,
-                index=features_df.index
-            )
+        # CRITICAL: Ensure feature dataframe is in the correct format before transformation
+        try:
+            if 'imputer' in preprocessors and preprocessors['imputer']:
+                # Ensure no NaN values before imputation
+                features_df = features_df.fillna(0)
+                transformed_data = preprocessors['imputer'].transform(features_df)
+                features_df = pd.DataFrame(
+                    transformed_data,
+                    columns=features_df.columns,
+                    index=features_df.index
+                )
+                if logger:
+                    logger.debug("Applied imputation")
+                else:
+                    print("[DEBUG] Applied imputation")
+            
+            if 'scaler' in preprocessors and preprocessors['scaler']:
+                # Ensure no infinite values before scaling
+                features_df = features_df.replace([np.inf, -np.inf], np.nan).fillna(0)
+                transformed_data = preprocessors['scaler'].transform(features_df)
+                features_df = pd.DataFrame(
+                    transformed_data,
+                    columns=features_df.columns,
+                    index=features_df.index
+                )
+                if logger:
+                    logger.debug("Applied scaling")
+                else:
+                    print("[DEBUG] Applied scaling")
+                    
+        except ValueError as ve:
+            error_msg = f"Preprocessing transformation failed: {ve}"
             if logger:
-                logger.debug("Applied imputation")
+                logger.error(error_msg)
+                logger.error(f"Features shape: {features_df.shape}, Expected features: {len(selected_features)}")
+                logger.error(f"Feature columns: {list(features_df.columns)}")
             else:
-                print("[DEBUG] Applied imputation")
+                print(f"[ERROR] {error_msg}")
+                print(f"[ERROR] Features shape: {features_df.shape}, Expected features: {len(selected_features)}")
+                print(f"[ERROR] Feature columns: {list(features_df.columns)}")
+            
+            # Return None to indicate failure rather than corrupted data
+            return None
         
-        if 'scaler' in preprocessors and preprocessors['scaler']:
-            features_df = pd.DataFrame(
-                preprocessors['scaler'].transform(features_df),
-                columns=features_df.columns,
-                index=features_df.index
-            )
-            if logger:
-                logger.debug("Applied scaling")
-            else:
-                print("[DEBUG] Applied scaling")
-        
-        # Final validation
+        # Final validation - ensure exact feature match
         if len(features_df.columns) != len(selected_features):
             raise ValueError(f"Final feature count mismatch: got {len(features_df.columns)}, expected {len(selected_features)}")
+        
+        # Ensure feature order matches exactly
+        if list(features_df.columns) != selected_features:
+            if logger:
+                logger.warning("Feature order mismatch, reordering to match training...")
+            else:
+                print("[WARNING] Feature order mismatch, reordering to match training...")
+            features_df = features_df[selected_features]
+        
+        # Final data quality check
+        if features_df.isna().any().any():
+            if logger:
+                logger.warning("NaN values found after preprocessing, filling with zeros...")
+            else:
+                print("[WARNING] NaN values found after preprocessing, filling with zeros...")
+            features_df = features_df.fillna(0)
+        
+        if logger:
+            logger.info(f"✅ Preprocessing pipeline completed: {features_df.shape} features ready for inference")
+        else:
+            print(f"[INFO] ✅ Preprocessing pipeline completed: {features_df.shape} features ready for inference")
         
         return features_df
         
@@ -400,7 +443,8 @@ def _standardize_features(features_df, required_features, logger=None):
         
         # Replace any remaining NaN or infinite values
         standardized_df = standardized_df.replace([np.inf, -np.inf], np.nan)
-        standardized_df = standardized_df.fillna(method='ffill').fillna(method='bfill').fillna(0)
+        # Use forward fill, backward fill, then zero fill
+        standardized_df = standardized_df.ffill().bfill().fillna(0)
         
         return standardized_df
         

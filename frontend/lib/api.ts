@@ -439,8 +439,22 @@ export class PortfolioApiClient {
         case 415:
           return new Error('Unsupported file type.')
         case 422:
-          // Validation errors
-          if (data?.errors && Array.isArray(data.errors)) {
+          // Validation errors - Handle FastAPI's structured validation error format
+          if (data?.detail && Array.isArray(data.detail)) {
+            const errorMessages = data.detail.map((err: any) => {
+              // Extract the actual error message from FastAPI's format
+              if (err.msg) {
+                const field = err.loc ? err.loc.join('.') : 'field'
+                return `${field}: ${err.msg}`
+              }
+              if (err.message) return err.message
+              if (typeof err === 'string') return err
+              return JSON.stringify(err)
+            }).join('\n• ')
+            return new Error(`Validation errors:\n• ${errorMessages}`)
+          } else if (data?.detail && typeof data.detail === 'string') {
+            return new Error(`Validation failed: ${data.detail}`)
+          } else if (data?.errors && Array.isArray(data.errors)) {
             const errorMessages = data.errors.map((err: any) => err.message || err).join(', ')
             return new Error(`Validation failed: ${errorMessages}`)
           }

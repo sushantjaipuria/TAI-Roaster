@@ -1,14 +1,17 @@
 import React, { useState } from 'react'
-import { TrendingUp, Info, BarChart3, Target } from 'lucide-react'
+import { TrendingUp, Info, BarChart3, Target, AlertCircle } from 'lucide-react'
 import { ResultsComponentProps, TimeframePerformance } from '../../lib/types-results'
 
 export default function PerformanceMetrics({ data }: ResultsComponentProps) {
   const [selectedTimeframe, setSelectedTimeframe] = useState<string>('1Y')
 
+  // Check if we have real performance data
+  const hasRealData = data.performanceMetrics && data.performanceMetrics.length > 0
+  
   // Get performance data for selected timeframe
-  const selectedPerformance = data.performanceMetrics.find(
-    p => p.timeframe === selectedTimeframe
-  ) || data.performanceMetrics[0]
+  const selectedPerformance = hasRealData 
+    ? data.performanceMetrics.find(p => p.timeframe === selectedTimeframe) || data.performanceMetrics[0]
+    : null
 
   // Metric definitions for tooltips
   const metricDefinitions: { [key: string]: string } = {
@@ -46,6 +49,33 @@ export default function PerformanceMetrics({ data }: ResultsComponentProps) {
     )
   }
 
+  // If no real data, show analysis unavailable message
+  if (!hasRealData) {
+    return (
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">📈 Performance Metrics</h2>
+            <p className="text-sm text-gray-600 mt-1">
+              Portfolio performance analysis
+            </p>
+          </div>
+        </div>
+
+        <div className="text-center py-12">
+          <AlertCircle className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Performance Data Unavailable</h3>
+          <p className="text-gray-600 mb-4">
+            Historical performance metrics will be available once sufficient data is processed.
+          </p>
+          <div className="text-sm text-gray-500">
+            This may take some time for new portfolios or during initial analysis.
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-6">
       <div className="flex items-center justify-between mb-6">
@@ -59,7 +89,7 @@ export default function PerformanceMetrics({ data }: ResultsComponentProps) {
 
       {/* Timeframe Selector */}
       <div className="flex flex-wrap gap-2 mb-6">
-        {['1M', '1Y'].map((timeframe) => {
+        {['1M', '3M', '1Y'].map((timeframe) => {
           // Only show button if we have data for this timeframe
           const hasData = data.performanceMetrics.some(p => p.timeframe === timeframe)
           if (!hasData) return null
@@ -82,19 +112,16 @@ export default function PerformanceMetrics({ data }: ResultsComponentProps) {
 
       {/* Return Comparison Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        {['1M', '3M', '1Y'].map((timeframe) => {
-          const performance = data.performanceMetrics.find(p => p.timeframe === timeframe)
-          if (!performance) return null
-          
+        {data.performanceMetrics.map((performance) => {
           const portfolioReturn = performance.returns
           const benchmarkReturn = performance.benchmarkReturns
           const outperformance = performance.outperformance
           const isOutperforming = outperformance >= 0
           
           return (
-            <div key={timeframe} className="bg-white border border-gray-200 rounded-lg p-4">
+            <div key={performance.timeframe} className="bg-white border border-gray-200 rounded-lg p-4">
               <div className="text-center">
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">{timeframe} Returns</h3>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">{performance.timeframe} Returns</h3>
                 
                 {/* Portfolio Return */}
                 <div className="mb-3">
@@ -126,106 +153,108 @@ export default function PerformanceMetrics({ data }: ResultsComponentProps) {
 
       <div className="grid grid-cols-1 gap-8">
         {/* Metrics Table */}
-        <div className="max-w-md mx-auto w-full">
-          <div className="bg-gray-50 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              {selectedTimeframe} Metrics
-            </h3>
-            
-            <div className="space-y-4">
-              {/* Returns */}
-              <div className="pb-3 border-b border-gray-200">
-                <MetricTooltip metric="CAGR">
-                  <div className="text-sm font-medium text-gray-700">CAGR</div>
-                </MetricTooltip>
-                <div className="text-xl font-bold text-gray-900">
-                  {selectedPerformance.annualizedReturn.toFixed(1)}%
+        {selectedPerformance && (
+          <div className="max-w-md mx-auto w-full">
+            <div className="bg-gray-50 rounded-lg p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                {selectedTimeframe} Metrics
+              </h3>
+              
+              <div className="space-y-4">
+                {/* Returns */}
+                <div className="pb-3 border-b border-gray-200">
+                  <MetricTooltip metric="CAGR">
+                    <div className="text-sm font-medium text-gray-700">CAGR</div>
+                  </MetricTooltip>
+                  <div className="text-xl font-bold text-gray-900">
+                    {selectedPerformance.annualizedReturn.toFixed(1)}%
+                  </div>
+                  <div className={`text-xs ${
+                    selectedPerformance.outperformance >= 0 ? 'text-green-600' : 'text-red-600'
+                  }`}>
+                    {selectedPerformance.outperformance >= 0 ? '+' : ''}{selectedPerformance.outperformance.toFixed(1)}% vs benchmark
+                  </div>
                 </div>
-                <div className={`text-xs ${
-                  selectedPerformance.outperformance >= 0 ? 'text-green-600' : 'text-red-600'
-                }`}>
-                  {selectedPerformance.outperformance >= 0 ? '+' : ''}{selectedPerformance.outperformance.toFixed(1)}% vs benchmark
-                </div>
-              </div>
 
-              {/* Alpha */}
-              <div className="pb-3 border-b border-gray-200">
-                <MetricTooltip metric="Alpha">
-                  <div className="text-sm font-medium text-gray-700">Alpha</div>
-                </MetricTooltip>
-                <div className={`text-xl font-bold ${
-                  selectedPerformance.metrics.alpha >= 0 ? 'text-green-600' : 'text-red-600'
-                }`}>
-                  {selectedPerformance.metrics.alpha >= 0 ? '+' : ''}{selectedPerformance.metrics.alpha.toFixed(2)}
+                {/* Alpha */}
+                <div className="pb-3 border-b border-gray-200">
+                  <MetricTooltip metric="Alpha">
+                    <div className="text-sm font-medium text-gray-700">Alpha</div>
+                  </MetricTooltip>
+                  <div className={`text-xl font-bold ${
+                    selectedPerformance.metrics.alpha >= 0 ? 'text-green-600' : 'text-red-600'
+                  }`}>
+                    {selectedPerformance.metrics.alpha >= 0 ? '+' : ''}{selectedPerformance.metrics.alpha.toFixed(2)}
+                  </div>
                 </div>
-              </div>
 
-              {/* Beta */}
-              <div className="pb-3 border-b border-gray-200">
-                <MetricTooltip metric="Beta">
-                  <div className="text-sm font-medium text-gray-700">Beta</div>
-                </MetricTooltip>
-                <div className="text-xl font-bold text-gray-900">
-                  {selectedPerformance.metrics.beta.toFixed(2)}
+                {/* Beta */}
+                <div className="pb-3 border-b border-gray-200">
+                  <MetricTooltip metric="Beta">
+                    <div className="text-sm font-medium text-gray-700">Beta</div>
+                  </MetricTooltip>
+                  <div className="text-xl font-bold text-gray-900">
+                    {selectedPerformance.metrics.beta.toFixed(2)}
+                  </div>
                 </div>
-              </div>
 
-              {/* Sharpe Ratio */}
-              <div className="pb-3 border-b border-gray-200">
-                <MetricTooltip metric="Sharpe Ratio">
-                  <div className="text-sm font-medium text-gray-700">Sharpe Ratio</div>
-                </MetricTooltip>
-                <div className={`text-xl font-bold ${
-                  selectedPerformance.metrics.sharpeRatio >= 1 ? 'text-green-600' : 'text-gray-900'
-                }`}>
-                  {selectedPerformance.metrics.sharpeRatio.toFixed(2)}
+                {/* Sharpe Ratio */}
+                <div className="pb-3 border-b border-gray-200">
+                  <MetricTooltip metric="Sharpe Ratio">
+                    <div className="text-sm font-medium text-gray-700">Sharpe Ratio</div>
+                  </MetricTooltip>
+                  <div className={`text-xl font-bold ${
+                    selectedPerformance.metrics.sharpeRatio >= 1 ? 'text-green-600' : 'text-gray-900'
+                  }`}>
+                    {selectedPerformance.metrics.sharpeRatio.toFixed(2)}
+                  </div>
                 </div>
-              </div>
 
-              {/* Sortino Ratio */}
-              <div className="pb-3 border-b border-gray-200">
-                <MetricTooltip metric="Sortino Ratio">
-                  <div className="text-sm font-medium text-gray-700">Sortino Ratio</div>
-                </MetricTooltip>
-                <div className={`text-xl font-bold ${
-                  selectedPerformance.metrics.sortinoRatio >= 1 ? 'text-green-600' : 'text-gray-900'
-                }`}>
-                  {selectedPerformance.metrics.sortinoRatio.toFixed(2)}
+                {/* Sortino Ratio */}
+                <div className="pb-3 border-b border-gray-200">
+                  <MetricTooltip metric="Sortino Ratio">
+                    <div className="text-sm font-medium text-gray-700">Sortino Ratio</div>
+                  </MetricTooltip>
+                  <div className={`text-xl font-bold ${
+                    selectedPerformance.metrics.sortinoRatio >= 1 ? 'text-green-600' : 'text-gray-900'
+                  }`}>
+                    {selectedPerformance.metrics.sortinoRatio.toFixed(2)}
+                  </div>
                 </div>
-              </div>
 
-              {/* Volatility */}
-              <div className="pb-3 border-b border-gray-200">
-                <MetricTooltip metric="Volatility">
-                  <div className="text-sm font-medium text-gray-700">Volatility</div>
-                </MetricTooltip>
-                <div className="text-xl font-bold text-gray-900">
-                  {selectedPerformance.metrics.volatility.toFixed(1)}%
+                {/* Volatility */}
+                <div className="pb-3 border-b border-gray-200">
+                  <MetricTooltip metric="Volatility">
+                    <div className="text-sm font-medium text-gray-700">Volatility</div>
+                  </MetricTooltip>
+                  <div className="text-xl font-bold text-gray-900">
+                    {selectedPerformance.metrics.volatility.toFixed(1)}%
+                  </div>
                 </div>
-              </div>
 
-              {/* Max Drawdown */}
-              <div className="pb-3 border-b border-gray-200">
-                <MetricTooltip metric="Max Drawdown">
-                  <div className="text-sm font-medium text-gray-700">Max Drawdown</div>
-                </MetricTooltip>
-                <div className="text-xl font-bold text-red-600">
-                  {selectedPerformance.metrics.maxDrawdown.toFixed(1)}%
+                {/* Max Drawdown */}
+                <div className="pb-3 border-b border-gray-200">
+                  <MetricTooltip metric="Max Drawdown">
+                    <div className="text-sm font-medium text-gray-700">Max Drawdown</div>
+                  </MetricTooltip>
+                  <div className="text-xl font-bold text-red-600">
+                    {selectedPerformance.metrics.maxDrawdown.toFixed(1)}%
+                  </div>
                 </div>
-              </div>
 
-              {/* R-Squared */}
-              <div>
-                <MetricTooltip metric="R-Squared">
-                  <div className="text-sm font-medium text-gray-700">R-Squared</div>
-                </MetricTooltip>
-                <div className="text-xl font-bold text-gray-900">
-                  {selectedPerformance.metrics.rSquared.toFixed(3)}
+                {/* R-Squared */}
+                <div>
+                  <MetricTooltip metric="R-Squared">
+                    <div className="text-sm font-medium text-gray-700">R-Squared</div>
+                  </MetricTooltip>
+                  <div className="text-xl font-bold text-gray-900">
+                    {selectedPerformance.metrics.rSquared.toFixed(3)}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Performance Summary Cards */}

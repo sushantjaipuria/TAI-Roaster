@@ -352,7 +352,7 @@ async def analyze_portfolio(
                 })
                 
                 # Run enhanced analysis using intelligence service
-                enhanced_results = await intelligence_service.analyze_portfolio(
+                enhanced_results = await intelligence_service.get_enhanced_portfolio_analysis(
                     request.portfolio,
                     request.user_profile
                 )
