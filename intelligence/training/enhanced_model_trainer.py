@@ -153,8 +153,8 @@ class EnhancedModelTrainer:
                     logger.warning(f"Insufficient data for {ticker}")
                     continue
                 
-                # Build features
-                features_df = build_features(prices)
+                # Build features for training (includes target)
+                features_df = build_features(prices, for_training=True)
                 
                 if len(features_df) < 50:
                     logger.warning(f"Insufficient features for {ticker}")

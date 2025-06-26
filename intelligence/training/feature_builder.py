@@ -43,14 +43,14 @@ def validate_data_requirements(df: pd.DataFrame) -> bool:
         
     return True
 
-def build_features(df: pd.DataFrame, standardize_for_model: bool = True) -> pd.DataFrame:
+def build_features(df: pd.DataFrame, for_training: bool = False) -> pd.DataFrame:
     """
     Build comprehensive feature set from price data using TA-Lib exclusively
     Implementation of 158+ technical indicators as per plan
     
     Args:
         df: Input DataFrame with OHLCV data
-        standardize_for_model: If True, standardize to exactly 50 features for model compatibility
+        for_training: If True, include target variable and don't apply feature selection
     """
     if df.empty or len(df) < 20:
         print("[WARNING] Insufficient data for feature engineering")
@@ -65,8 +65,8 @@ def build_features(df: pd.DataFrame, standardize_for_model: bool = True) -> pd.D
         # Create a copy to avoid modifying original data
         features_df = df.copy()
         
-        # Create target variable (5-day forward return) only if not standardizing for model
-        if not standardize_for_model:
+        # Create target variable (5-day forward return) only for training
+        if for_training:
             features_df['Target_5D_Return'] = features_df['Close'].pct_change(5).shift(-5)
         
         # Basic price features
@@ -81,12 +81,9 @@ def build_features(df: pd.DataFrame, standardize_for_model: bool = True) -> pd.D
         # Enhanced cleaning and validation
         features_df = clean_and_validate_features(features_df)
         
-        # CRITICAL FIX: Standardize features for model compatibility
-        if standardize_for_model:
-            features_df = standardize_features_for_model(features_df)
-            print(f"[INFO] ✅ Standardized to {len(features_df.columns)} features for model compatibility")
-        else:
-            # Remove rows where target is NaN (last 5 rows typically) only if target exists
+        # For training: keep all features
+        if for_training:
+            # Remove rows where target is NaN (last 5 rows typically)
             if 'Target_5D_Return' in features_df.columns:
                 features_df = features_df.dropna(subset=['Target_5D_Return'])
         

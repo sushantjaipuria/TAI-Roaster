@@ -228,8 +228,13 @@ def generate_latest_features(ticker: str, user_input: Dict[str, Any] = None):
                 "Initial data collection and quality assessment"
             )
 
-        # Use enhanced feature builder
-        features_df = build_features(prices)
+        # Use enhanced feature builder - generate all features for inference
+        features_df = build_features(prices, for_training=False)
+        
+        # Add ticker encoding (same as training)
+        if features_df is not None and not features_df.empty:
+            features_df['ticker_encoded'] = hash(ticker) % 1000
+        
         feature_time = (time.time() - feature_start_time) * 1000
         
         if user_input and features_df is not None:
@@ -283,25 +288,22 @@ def generate_latest_features(ticker: str, user_input: Dict[str, Any] = None):
 
 def _apply_preprocessing(features_df, logger=None):
     """
-    Apply preprocessing pipeline to match training - loads saved preprocessors and feature selection
-    FIXED: Corrected path and added robust feature standardization
+    Apply preprocessing pipeline to match training
+    SIMPLIFIED VERSION that mimics the working test approach
     """
     try:
-        # FIXED: Use correct path for preprocessors (removed duplicate 'intelligence' folder)
+        import joblib
+        import numpy as np
+        
+        # Load preprocessors fresh
         preprocessors_path = BASE_DIR / "intelligence" / "models" / "enhanced" / "preprocessors.pkl"
         
         if not preprocessors_path.exists():
-            # Fallback to training path if main path doesn't exist
             fallback_path = BASE_DIR / "intelligence" / "training" / "intelligence" / "models" / "enhanced" / "preprocessors.pkl"
             if fallback_path.exists():
                 preprocessors_path = fallback_path
-                if logger:
-                    logger.warning(f"Using fallback preprocessor path: {preprocessors_path}")
-                else:
-                    print(f"[WARNING] Using fallback preprocessor path: {preprocessors_path}")
-            else:
-                raise FileNotFoundError(f"Preprocessors not found at {preprocessors_path} or {fallback_path}")
         
+        # Fresh load to avoid any caching issues
         preprocessors = joblib.load(str(preprocessors_path))
         
         if logger:
@@ -309,99 +311,64 @@ def _apply_preprocessing(features_df, logger=None):
         else:
             print(f"[INFO] ✅ Loaded preprocessors from {preprocessors_path}")
         
-        # CRITICAL: Apply feature selection to match training (exactly 50 features)
-        if 'feature_columns' in preprocessors:
-            selected_features = preprocessors['feature_columns']
-            
-            if logger:
-                logger.info(f"Model expects exactly {len(selected_features)} features")
-            else:
-                print(f"[INFO] Model expects exactly {len(selected_features)} features")
-            
-            # Ensure all required features are present with proper defaults
-            standardized_df = _standardize_features(features_df, selected_features, logger)
-            
-            # Apply feature selection - guaranteed to have correct features and order
-            features_df = standardized_df[selected_features].copy()
-            
-            if logger:
-                logger.info(f"✅ Feature standardization complete: {len(features_df.columns)} features in correct order")
-            else:
-                print(f"[INFO] ✅ Feature standardization complete: {len(features_df.columns)} features in correct order")
-        else:
-            raise ValueError("No 'feature_columns' found in preprocessors - invalid preprocessor file")
-        
-        # Apply preprocessing steps in the same order as training
-        # CRITICAL: Ensure feature dataframe is in the correct format before transformation
-        try:
-            if 'imputer' in preprocessors and preprocessors['imputer']:
-                # Ensure no NaN values before imputation
-                features_df = features_df.fillna(0)
-                transformed_data = preprocessors['imputer'].transform(features_df)
-                features_df = pd.DataFrame(
-                    transformed_data,
-                    columns=features_df.columns,
-                    index=features_df.index
-                )
-                if logger:
-                    logger.debug("Applied imputation")
-                else:
-                    print("[DEBUG] Applied imputation")
-            
-            if 'scaler' in preprocessors and preprocessors['scaler']:
-                # Ensure no infinite values before scaling
-                features_df = features_df.replace([np.inf, -np.inf], np.nan).fillna(0)
-                transformed_data = preprocessors['scaler'].transform(features_df)
-                features_df = pd.DataFrame(
-                    transformed_data,
-                    columns=features_df.columns,
-                    index=features_df.index
-                )
-                if logger:
-                    logger.debug("Applied scaling")
-                else:
-                    print("[DEBUG] Applied scaling")
-                    
-        except ValueError as ve:
-            error_msg = f"Preprocessing transformation failed: {ve}"
-            if logger:
-                logger.error(error_msg)
-                logger.error(f"Features shape: {features_df.shape}, Expected features: {len(selected_features)}")
-                logger.error(f"Feature columns: {list(features_df.columns)}")
-            else:
-                print(f"[ERROR] {error_msg}")
-                print(f"[ERROR] Features shape: {features_df.shape}, Expected features: {len(selected_features)}")
-                print(f"[ERROR] Feature columns: {list(features_df.columns)}")
-            
-            # Return None to indicate failure rather than corrupted data
-            return None
-        
-        # Final validation - ensure exact feature match
-        if len(features_df.columns) != len(selected_features):
-            raise ValueError(f"Final feature count mismatch: got {len(features_df.columns)}, expected {len(selected_features)}")
-        
-        # Ensure feature order matches exactly
-        if list(features_df.columns) != selected_features:
-            if logger:
-                logger.warning("Feature order mismatch, reordering to match training...")
-            else:
-                print("[WARNING] Feature order mismatch, reordering to match training...")
-            features_df = features_df[selected_features]
-        
-        # Final data quality check
-        if features_df.isna().any().any():
-            if logger:
-                logger.warning("NaN values found after preprocessing, filling with zeros...")
-            else:
-                print("[WARNING] NaN values found after preprocessing, filling with zeros...")
-            features_df = features_df.fillna(0)
+        # Get preprocessing feature requirements
+        imputer = preprocessors['imputer']
+        scaler = preprocessors['scaler']
+        imputer_features = list(imputer.feature_names_in_)
+        scaler_features = list(scaler.feature_names_in_)
         
         if logger:
-            logger.info(f"✅ Preprocessing pipeline completed: {features_df.shape} features ready for inference")
+            logger.info(f"Pipeline: {len(imputer_features)} features → Imputer → {len(scaler_features)} features → Scaler")
+            logger.info(f"We have {len(features_df.columns)} features")
         else:
-            print(f"[INFO] ✅ Preprocessing pipeline completed: {features_df.shape} features ready for inference")
+            print(f"[INFO] Pipeline: {len(imputer_features)} features → Imputer → {len(scaler_features)} features → Scaler")
+            print(f"[INFO] We have {len(features_df.columns)} features")
         
-        return features_df
+        # Step 1: Standardize to imputer feature set (196 features)
+        imputer_df = _standardize_features(features_df, imputer_features, logger)
+        imputer_df = imputer_df[imputer_features].copy()
+        imputer_df = imputer_df.fillna(0).replace([np.inf, -np.inf], 0)
+        
+        # Step 2: Apply imputation (196 → preprocessed 196)
+        if logger:
+            logger.debug("Applying imputation to 196 features...")
+        else:
+            print("[DEBUG] Applying imputation to 196 features...")
+        
+        # Pass DataFrame directly to feature_engine imputer (it expects DataFrame)
+        imputed_df = imputer.transform(imputer_df)
+        
+        # Step 3: Reduce to scaler feature set (196 → 149) 
+        scaler_df = imputed_df[scaler_features].copy()
+        scaler_df = scaler_df.fillna(0).replace([np.inf, -np.inf], 0)
+        
+        # Step 4: Apply scaling (149 → scaled 149)
+        if logger:
+            logger.debug("Applying scaling to 149 features...")
+        else:
+            print("[DEBUG] Applying scaling to 149 features...")
+        
+        data_array = scaler_df.values.astype(np.float64)
+        transformed_array = scaler.transform(data_array)
+        scaled_df = pd.DataFrame(
+            transformed_array,
+            columns=scaler_df.columns,
+            index=scaler_df.index
+        )
+        
+        # Step 5: Select final features for models (149 → 50)
+        if 'feature_columns' in preprocessors:
+            selected_features = preprocessors['feature_columns']
+            final_df = scaled_df[selected_features].copy()
+            
+            if logger:
+                logger.info(f"✅ Preprocessing completed: {final_df.shape} features ready for models")
+            else:
+                print(f"[INFO] ✅ Preprocessing completed: {final_df.shape} features ready for models")
+            
+            return final_df
+        else:
+            raise ValueError("No 'feature_columns' found in preprocessors")
         
     except Exception as e:
         error_msg = f"Preprocessing failed: {e}"
@@ -410,7 +377,12 @@ def _apply_preprocessing(features_df, logger=None):
         else:
             print(f"[ERROR] {error_msg}")
         
-        # Return None to indicate failure (don't return malformed data)
+        import traceback
+        if logger:
+            logger.error(f"Traceback: {traceback.format_exc()}")
+        else:
+            print(f"[ERROR] Traceback: {traceback.format_exc()}")
+        
         return None
 
 

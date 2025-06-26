@@ -141,6 +141,68 @@ const StockInsightCard = ({ stock }: { stock: any }) => {
         </div>
       )}
 
+      {/* ML Predictions Section (NEW) */}
+      {stock.ml_predictions && (
+        <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4 mb-4 border border-green-200">
+          <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-green-600" />
+            AI Model Predictions
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+              Live
+            </span>
+          </h4>
+          <div className="grid grid-cols-3 gap-3 text-xs">
+            {stock.ml_predictions.xgboost && (
+              <div className="text-center bg-white rounded-lg p-2 border">
+                <div className="font-semibold text-gray-900 mb-1">XGBoost</div>
+                <div className={`text-sm font-bold ${stock.ml_predictions.xgboost.return >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {(stock.ml_predictions.xgboost.return * 100).toFixed(1)}%
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  Conf: {(stock.ml_predictions.xgboost.confidence * 100).toFixed(0)}%
+                </div>
+              </div>
+            )}
+            {stock.ml_predictions.ngboost && (
+              <div className="text-center bg-white rounded-lg p-2 border">
+                <div className="font-semibold text-gray-900 mb-1">NGBoost</div>
+                <div className={`text-sm font-bold ${stock.ml_predictions.ngboost.return >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {(stock.ml_predictions.ngboost.return * 100).toFixed(1)}%
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  Conf: {(stock.ml_predictions.ngboost.confidence * 100).toFixed(0)}%
+                </div>
+              </div>
+            )}
+            {stock.ml_predictions.quantile && (
+              <div className="text-center bg-white rounded-lg p-2 border">
+                <div className="font-semibold text-gray-900 mb-1">Quantile</div>
+                <div className={`text-sm font-bold ${stock.ml_predictions.quantile.return >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {(stock.ml_predictions.quantile.return * 100).toFixed(1)}%
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  Conf: {(stock.ml_predictions.quantile.confidence * 100).toFixed(0)}%
+                </div>
+              </div>
+            )}
+          </div>
+          {/* Ensemble Prediction */}
+          {stock.ensemblePrediction && (
+            <div className="mt-3 pt-3 border-t border-green-200">
+              <div className="text-center">
+                <div className="text-xs text-gray-600 mb-1">Ensemble Forecast</div>
+                <div className={`text-lg font-bold ${stock.ensemblePrediction.return >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {(stock.ensemblePrediction.return * 100).toFixed(1)}% return
+                </div>
+                <div className="text-xs text-gray-500">
+                  Risk: {(stock.ensemblePrediction.risk * 100).toFixed(1)}%
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Performance Metrics with Real-time Data */}
       <div className="grid grid-cols-3 gap-4 mb-4">
         <div className="text-center">
@@ -239,17 +301,34 @@ const StockInsightCard = ({ stock }: { stock: any }) => {
           <div className="space-y-3 mt-4 border-t pt-3">
             {/* Investment Thesis */}
             {stock.investmentThesis && (
-              <div className="p-3 bg-purple-50 rounded-lg">
-                <p className="text-sm font-medium text-purple-800 mb-1">💡 Investment Thesis:</p>
-                <p className="text-sm text-purple-700">{stock.investmentThesis}</p>
+              <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
+                <p className="text-sm font-medium text-purple-800 mb-2 flex items-center gap-2">
+                  💡 Investment Thesis
+                  <span className="text-xs bg-purple-200 text-purple-800 px-2 py-0.5 rounded-full">Strategic</span>
+                </p>
+                <div className="text-sm text-purple-700 leading-relaxed">
+                  <blockquote className="border-l-3 border-purple-300 pl-3 italic">
+                    "{stock.investmentThesis}"
+                  </blockquote>
+                </div>
               </div>
             )}
 
             {/* Business Story */}
             {stock.businessStory && (
-              <div className="p-3 bg-indigo-50 rounded-lg">
-                <p className="text-sm font-medium text-indigo-800 mb-1">📊 Business Overview:</p>
-                <p className="text-sm text-indigo-700">{stock.businessStory}</p>
+              <div className="p-4 bg-indigo-50 rounded-lg border border-indigo-200">
+                <p className="text-sm font-medium text-indigo-800 mb-2 flex items-center gap-2">
+                  📊 Business Overview
+                  <span className="text-xs bg-indigo-200 text-indigo-800 px-2 py-0.5 rounded-full">AI Analysis</span>
+                </p>
+                <div className="text-sm text-indigo-700 leading-relaxed">
+                  {/* Format business story with better structure */}
+                                     {stock.businessStory.split('.').filter((sentence: string) => sentence.trim()).map((sentence: string, index: number) => (
+                    <p key={index} className="mb-1">
+                      • {sentence.trim()}.
+                    </p>
+                  ))}
+                </div>
               </div>
             )}
 
