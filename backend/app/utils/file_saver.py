@@ -6,11 +6,53 @@ Saves analysis results to the processed directory for frontend consumption
 import json
 import os
 from pathlib import Path
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Union, List
 from datetime import datetime
 import logging
 
+# Import numpy for type checking - handle import gracefully
+try:
+    import numpy as np
+    NUMPY_AVAILABLE = True
+except ImportError:
+    NUMPY_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
+
+def convert_numpy_types(obj: Any) -> Any:
+    """
+    Recursively convert numpy types to native Python types for JSON serialization.
+    
+    Args:
+        obj: Object that may contain numpy types
+        
+    Returns:
+        Object with numpy types converted to Python types
+    """
+    if not NUMPY_AVAILABLE:
+        # If numpy is not available, return object as-is
+        return obj
+    
+    # Handle numpy scalar types
+    if isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        return float(obj)
+    elif isinstance(obj, np.bool_):
+        return bool(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()  # Convert numpy arrays to lists
+    
+    # Handle collections recursively
+    elif isinstance(obj, dict):
+        return {key: convert_numpy_types(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_numpy_types(item) for item in obj]
+    elif isinstance(obj, tuple):
+        return tuple(convert_numpy_types(item) for item in obj)
+    
+    # Return unchanged for other types
+    return obj
 
 class AnalysisFileSaver:
     """Handles saving analysis results to the processed directory"""
@@ -50,9 +92,12 @@ class AnalysisFileSaver:
                 "format_version": "1.0"
             }
             
+            # Convert numpy types to Python types for JSON serialization
+            json_ready_data = convert_numpy_types(analysis_data_with_meta)
+            
             # Save to file with proper formatting
             with open(file_path, 'w', encoding='utf-8') as f:
-                json.dump(analysis_data_with_meta, f, indent=2, ensure_ascii=False)
+                json.dump(json_ready_data, f, indent=2, ensure_ascii=False)
             
             logger.info(f"✅ Analysis result saved to: {file_path}")
             return True, str(file_path), ""
@@ -73,9 +118,12 @@ class AnalysisFileSaver:
             filename = f"analysis_demo-{analysis_id}.json"
             file_path = self.processed_dir / filename
             
+            # Convert numpy types to Python types for JSON serialization
+            json_ready_data = convert_numpy_types(analysis_data)
+            
             # Save without extra metadata (to match demo format exactly)
             with open(file_path, 'w', encoding='utf-8') as f:
-                json.dump(analysis_data, f, indent=2, ensure_ascii=False)
+                json.dump(json_ready_data, f, indent=2, ensure_ascii=False)
             
             logger.info(f"✅ Demo format analysis saved to: {file_path}")
             return True, str(file_path), ""
