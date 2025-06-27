@@ -37,8 +37,8 @@ interface EnhancedStock {
   confidence_level: string
   key_strengths?: string[]
   key_concerns?: string[]
-  catalysts?: string[]
-  risks?: string[]
+  catalysts?: (string | { type?: string; description: string; timeline?: string; impact?: string })[]
+  risks?: (string | { type?: string; description: string; severity?: string; probability?: string })[]
   business_story?: string
   investment_thesis?: string
   beta?: number
@@ -338,7 +338,7 @@ const EnhancedStockCard = ({ stock }: { stock: EnhancedStock }) => {
                     {stock.catalysts.map((catalyst, index) => (
                       <li key={index} className="flex items-start gap-2">
                         <Star className="w-3 h-3 text-green-500 mt-1 flex-shrink-0" />
-                        <span>{catalyst}</span>
+                        <span>{typeof catalyst === 'string' ? catalyst : catalyst.description}</span>
                       </li>
                     ))}
                   </ul>
@@ -352,7 +352,7 @@ const EnhancedStockCard = ({ stock }: { stock: EnhancedStock }) => {
                     {stock.risks.map((risk, index) => (
                       <li key={index} className="flex items-start gap-2">
                         <AlertTriangle className="w-3 h-3 text-red-500 mt-1 flex-shrink-0" />
-                        <span>{risk}</span>
+                        <span>{typeof risk === 'string' ? risk : risk.description}</span>
                       </li>
                     ))}
                   </ul>

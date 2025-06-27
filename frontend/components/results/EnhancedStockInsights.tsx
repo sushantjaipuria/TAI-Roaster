@@ -337,8 +337,8 @@ const StockInsightCard = ({ stock }: { stock: any }) => {
               <div className="p-3 bg-emerald-50 rounded-lg">
                 <p className="text-sm font-medium text-emerald-800 mb-1">🚀 Growth Catalysts:</p>
                 <ul className="text-sm text-emerald-700 list-disc list-inside">
-                  {stock.catalysts.map((catalyst: string, index: number) => (
-                    <li key={index}>{catalyst}</li>
+                  {stock.catalysts.map((catalyst: any, index: number) => (
+                    <li key={index}>{typeof catalyst === 'string' ? catalyst : catalyst.description}</li>
                   ))}
                 </ul>
               </div>
@@ -349,8 +349,8 @@ const StockInsightCard = ({ stock }: { stock: any }) => {
               <div className="p-3 bg-red-50 rounded-lg">
                 <p className="text-sm font-medium text-red-800 mb-1">⚠️ Risk Factors:</p>
                 <ul className="text-sm text-red-700 list-disc list-inside">
-                  {stock.risks.map((risk: string, index: number) => (
-                    <li key={index}>{risk}</li>
+                  {stock.risks.map((risk: any, index: number) => (
+                    <li key={index}>{typeof risk === 'string' ? risk : risk.description}</li>
                   ))}
                 </ul>
               </div>
