@@ -138,6 +138,17 @@ class AllocationBreakdown(BaseModel):
             }
         }
 
+class ConcentrationMetrics(BaseModel):
+    top_3_concentration: float
+    top_5_concentration: float
+    herfindahl_index: float
+    concentration_level: str
+    diversification_score: float
+
+class ConcentrationAnalysis(BaseModel):
+    holdings: List[Dict[str, Any]]
+    metrics: ConcentrationMetrics
+
 class EnhancedStock(BaseModel):
     """Enhanced stock analysis with ML insights"""
     ticker: str
@@ -162,6 +173,9 @@ class EnhancedStock(BaseModel):
     returns_1w: Optional[float] = None
     returns_1m: Optional[float] = None
     returns_3m: Optional[float] = None
+    
+    # Concentration Analysis
+    concentration_analysis: Optional[ConcentrationAnalysis]
     
     class Config:
         use_enum_values = True

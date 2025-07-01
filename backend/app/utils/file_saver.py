@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Dict, Any, Tuple, Union, List
 from datetime import datetime
 import logging
+import numpy as np
 
 # Import numpy for type checking - handle import gracefully
 try:
@@ -53,6 +54,17 @@ def convert_numpy_types(obj: Any) -> Any:
     
     # Return unchanged for other types
     return obj
+
+class NumpyJSONEncoder(json.JSONEncoder):
+    """Custom JSON encoder for numpy types"""
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super().default(obj)
 
 class AnalysisFileSaver:
     """Handles saving analysis results to the processed directory"""

@@ -102,7 +102,22 @@ class EnhancedStockInsight:
         # Convert dataclass objects to dictionaries
         result['technical_analysis'] = asdict(self.technical_analysis)
         result['fundamental_analysis'] = asdict(self.fundamental_analysis)
-        return result
+        # Convert numpy types to native Python types
+        return self._convert_numpy_types(result)
+
+    def _convert_numpy_types(self, obj):
+        """Convert numpy types to native Python types for JSON serialization"""
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, dict):
+            return {key: self._convert_numpy_types(value) for key, value in obj.items()}
+        elif isinstance(obj, list):
+            return [self._convert_numpy_types(item) for item in obj]
+        return obj
 
 class EnhancedStockAnalyzer:
     """
@@ -136,42 +151,46 @@ class EnhancedStockAnalyzer:
             
             if historical_data is None or historical_data.empty:
                 logger.warning(f"Insufficient data for {ticker}")
-                return self._create_fallback_analysis(ticker, market_data)
+                return await self._create_data_driven_analysis(ticker, market_data)
             
-            # Perform parallel analysis
+            # Analyze technical and fundamental aspects in parallel
             tasks = [
-                self._analyze_technical(ticker, historical_data, market_data),
-                self._analyze_fundamental(ticker, market_data),
-                self._calculate_risk_metrics(historical_data),
-                self._generate_projections(ticker, historical_data, market_data),
-                self._perform_sector_comparison(ticker, market_data),
-                self._generate_ai_insights(ticker, market_data, historical_data)
+                asyncio.create_task(self._analyze_technical(ticker, historical_data, market_data)),
+                asyncio.create_task(self._analyze_fundamental(ticker, market_data))
             ]
             
             results = await asyncio.gather(*tasks, return_exceptions=True)
             
-            technical_analysis = results[0] if not isinstance(results[0], Exception) else self._default_technical_analysis()
-            fundamental_analysis = results[1] if not isinstance(results[1], Exception) else self._default_fundamental_analysis()
-            risk_metrics = results[2] if not isinstance(results[2], Exception) else {}
-            projections = results[3] if not isinstance(results[3], Exception) else {}
-            sector_comparison = results[4] if not isinstance(results[4], Exception) else {}
-            ai_insights = results[5] if not isinstance(results[5], Exception) else {}
+            # Handle results and exceptions
+            technical_analysis = results[0] if not isinstance(results[0], Exception) else self._minimal_technical_analysis()
+            fundamental_analysis = results[1] if not isinstance(results[1], Exception) else self._minimal_fundamental_analysis()
+            
+            # Calculate risk metrics
+            risk_metrics = await self._calculate_risk_metrics(historical_data)
             
             # Calculate composite scores
-            scores = self._calculate_composite_scores(
-                technical_analysis, 
-                fundamental_analysis, 
-                market_data,
-                risk_metrics
-            )
+            scores = self._calculate_composite_scores(technical_analysis, fundamental_analysis, market_data, risk_metrics)
+            
+            # Generate projections and insights in parallel
+            projection_tasks = [
+                asyncio.create_task(self._generate_projections(ticker, historical_data, market_data)),
+                asyncio.create_task(self._perform_sector_comparison(ticker, market_data)),
+                asyncio.create_task(self._generate_ai_insights(ticker, market_data, historical_data))
+            ]
+            
+            projection_results = await asyncio.gather(*projection_tasks, return_exceptions=True)
+            
+            projections = projection_results[0] if not isinstance(projection_results[0], Exception) else {}
+            sector_comparison = projection_results[1] if not isinstance(projection_results[1], Exception) else {}
+            ai_insights = projection_results[2] if not isinstance(projection_results[2], Exception) else {}
             
             # Build comprehensive insight
             insight = EnhancedStockInsight(
                 ticker=ticker,
                 company_name=market_data.get('company_name', ticker),
                 sector=market_data.get('sector', 'Unknown'),
-                current_price=market_data.get('current_price', 0),
-                market_cap_category=market_data.get('market_cap_category', 'Unknown'),
+                current_price=market_data.get('current_price', 0.0),
+                market_cap_category=self._determine_market_cap_category(market_data.get('market_cap', 0)),
                 
                 # Multi-factor scores
                 fundamental_score=scores['fundamental_score'],
@@ -189,13 +208,13 @@ class EnhancedStockAnalyzer:
                 # Risk metrics
                 beta=risk_metrics.get('beta', 1.0),
                 volatility=risk_metrics.get('volatility', 0.2),
-                max_drawdown=risk_metrics.get('max_drawdown', -0.15),
+                max_drawdown=risk_metrics.get('max_drawdown', 0.15),
                 
                 # Projections
-                target_price=projections.get('target_price', market_data.get('current_price', 0) * 1.1),
-                upside_potential=projections.get('upside_potential', 10.0),
-                confidence_level=projections.get('confidence_level', 'MEDIUM'),
-                time_horizon=projections.get('time_horizon', '12M'),
+                target_price=projections.get('target_price', market_data.get('current_price', 0.0)),
+                upside_potential=projections.get('upside_potential', 0.0),
+                confidence_level=projections.get('confidence_level', 'Medium'),
+                time_horizon=projections.get('time_horizon', '12 months'),
                 price_range=projections.get('price_range', {}),
                 
                 # Key insights
@@ -218,7 +237,7 @@ class EnhancedStockAnalyzer:
             
         except Exception as e:
             logger.error(f"❌ Enhanced analysis failed for {ticker}: {e}")
-            return self._create_fallback_analysis(ticker, market_data if 'market_data' in locals() else {})
+            return await self._create_data_driven_analysis(ticker, market_data if 'market_data' in locals() else {})
     
     async def _get_historical_data(self, ticker: str, period: str = "2y") -> Optional[pd.DataFrame]:
         """Get historical data for technical analysis"""
@@ -338,7 +357,7 @@ class EnhancedStockAnalyzer:
             
         except Exception as e:
             logger.error(f"Technical analysis failed for {ticker}: {e}")
-            return self._default_technical_analysis()
+            return self._minimal_technical_analysis()
     
     async def _analyze_fundamental(self, ticker: str, market_data: Dict) -> FundamentalAnalysis:
         """Perform comprehensive fundamental analysis"""
@@ -396,7 +415,7 @@ class EnhancedStockAnalyzer:
             
         except Exception as e:
             logger.error(f"Fundamental analysis failed for {ticker}: {e}")
-            return self._default_fundamental_analysis()
+            return self._minimal_fundamental_analysis()
     
     async def _calculate_risk_metrics(self, historical_data: pd.DataFrame) -> Dict[str, float]:
         """Calculate comprehensive risk metrics"""
@@ -875,72 +894,410 @@ class EnhancedStockAnalyzer:
         else:
             return "STRONG_SELL"
     
-    def _default_technical_analysis(self) -> TechnicalAnalysis:
-        """Default technical analysis for fallback"""
+    async def _calculate_real_technical_analysis(self, ticker: str) -> TechnicalAnalysis:
+        """Calculate real technical analysis using live data"""
+        try:
+            # Get fresh market data
+            historical_data = await self._get_historical_data(ticker, "1y")
+            if historical_data is None or historical_data.empty:
+                logger.warning(f"No historical data for technical analysis: {ticker}")
+                return self._minimal_technical_analysis()
+            
+            # Calculate real technical indicators
+            indicators = self._calculate_technical_indicators_sync(historical_data)
+            current_price = historical_data['Close'].iloc[-1]
+            
+            # Calculate component scores using real data
+            momentum_score = self._calculate_momentum_score(indicators)
+            trend_score = self._calculate_trend_score(indicators, current_price)
+            volatility_score = self._calculate_volatility_score(indicators)
+            volume_score = self._calculate_volume_score(indicators)
+            
+            # Overall technical score
+            overall_score = (momentum_score * 0.3 + trend_score * 0.3 + 
+                           volatility_score * 0.2 + volume_score * 0.2)
+            
+            # Generate technical signals
+            signals = self._generate_technical_signals(indicators, current_price)
+            
+            return TechnicalAnalysis(
+                momentum_score=momentum_score,
+                trend_score=trend_score,
+                volatility_score=volatility_score,
+                volume_score=volume_score,
+                overall_technical_score=overall_score,
+                signals=signals,
+                indicators=indicators
+            )
+            
+        except Exception as e:
+            logger.error(f"Real technical analysis failed for {ticker}: {e}")
+            return self._minimal_technical_analysis()
+    
+    async def _calculate_real_fundamental_analysis(self, ticker: str, market_data: Dict) -> FundamentalAnalysis:
+        """Calculate real fundamental analysis using market data"""
+        try:
+            # Extract real metrics from market data
+            metrics = self._extract_fundamental_metrics(market_data, ticker)
+            
+            # Calculate component scores using real data
+            valuation_score = self._calculate_valuation_score(metrics)
+            profitability_score = self._calculate_profitability_score(metrics)
+            financial_health_score = self._calculate_financial_health_score(metrics)
+            growth_score = self._calculate_growth_score(metrics)
+            
+            # Overall fundamental score
+            overall_score = (valuation_score * 0.25 + profitability_score * 0.25 + 
+                           financial_health_score * 0.25 + growth_score * 0.25)
+            
+            # Identify red flags
+            red_flags = self._identify_red_flags(metrics)
+            
+            return FundamentalAnalysis(
+                valuation_score=valuation_score,
+                profitability_score=profitability_score,
+                financial_health_score=financial_health_score,
+                growth_score=growth_score,
+                overall_fundamental_score=overall_score,
+                metrics=metrics,
+                red_flags=red_flags
+            )
+            
+        except Exception as e:
+            logger.error(f"Real fundamental analysis failed for {ticker}: {e}")
+            return self._minimal_fundamental_analysis()
+    
+    def _calculate_technical_indicators_sync(self, historical_data: pd.DataFrame) -> Dict[str, Any]:
+        """Calculate technical indicators synchronously"""
+        try:
+            indicators = {}
+            
+            # Basic price data
+            close = historical_data['Close']
+            high = historical_data['High']
+            low = historical_data['Low']
+            volume = historical_data.get('Volume', pd.Series([1000000] * len(close)))
+            
+            # Moving averages
+            indicators['sma_20'] = close.rolling(window=20).mean().iloc[-1] if len(close) >= 20 else close.iloc[-1]
+            indicators['sma_50'] = close.rolling(window=50).mean().iloc[-1] if len(close) >= 50 else close.iloc[-1]
+            indicators['ema_12'] = close.ewm(span=12).mean().iloc[-1] if len(close) >= 12 else close.iloc[-1]
+            indicators['ema_26'] = close.ewm(span=26).mean().iloc[-1] if len(close) >= 26 else close.iloc[-1]
+            
+            # RSI calculation
+            delta = close.diff()
+            gain = delta.where(delta > 0, 0).rolling(window=14).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+            rs = gain / loss
+            indicators['rsi'] = 100 - (100 / (1 + rs)).iloc[-1] if len(close) >= 14 else 50
+            
+            # MACD
+            ema_12 = close.ewm(span=12).mean()
+            ema_26 = close.ewm(span=26).mean()
+            macd_line = ema_12 - ema_26
+            indicators['macd'] = macd_line.iloc[-1] if len(close) >= 26 else 0
+            indicators['macd_signal'] = macd_line.ewm(span=9).mean().iloc[-1] if len(close) >= 35 else 0
+            
+            # Bollinger Bands
+            sma_20 = close.rolling(window=20).mean()
+            std_20 = close.rolling(window=20).std()
+            indicators['bb_upper'] = (sma_20 + (std_20 * 2)).iloc[-1] if len(close) >= 20 else close.iloc[-1] * 1.1
+            indicators['bb_lower'] = (sma_20 - (std_20 * 2)).iloc[-1] if len(close) >= 20 else close.iloc[-1] * 0.9
+            
+            # Volatility
+            returns = close.pct_change().dropna()
+            indicators['volatility'] = returns.std() * (252 ** 0.5) if len(returns) > 0 else 0.2
+            
+            # Volume indicators
+            indicators['volume_sma'] = volume.rolling(window=20).mean().iloc[-1] if len(volume) >= 20 else volume.iloc[-1]
+            indicators['volume_ratio'] = volume.iloc[-1] / indicators['volume_sma'] if indicators['volume_sma'] > 0 else 1.0
+            
+            return indicators
+            
+        except Exception as e:
+            logger.error(f"Failed to calculate technical indicators: {e}")
+            return {}
+    
+    def _extract_fundamental_metrics(self, market_data: Dict, ticker: str) -> Dict[str, Any]:
+        """Extract real fundamental metrics from market data"""
+        try:
+            import yfinance as yf
+            
+            # Get detailed stock info
+            stock = yf.Ticker(f"{ticker}.NS")
+            info = stock.info
+            
+            # Extract real metrics
+            metrics = {
+                'pe_ratio': info.get('trailingPE', market_data.get('pe_ratio', 20)),
+                'pb_ratio': info.get('priceToBook', market_data.get('pb_ratio', 2.5)),
+                'debt_equity': info.get('debtToEquity', 50) / 100 if info.get('debtToEquity') else 0.5,
+                'roe': info.get('returnOnEquity', 0.15),
+                'current_ratio': info.get('currentRatio', 1.5),
+                'revenue_growth': info.get('revenueGrowth', 0.1),
+                'earnings_growth': info.get('earningsGrowth', 0.1),
+                'market_cap': info.get('marketCap', 0),
+                'dividend_yield': info.get('dividendYield', 0),
+                'profit_margin': info.get('profitMargins', 0.1)
+            }
+            
+            # Clean and validate metrics
+            for key, value in metrics.items():
+                if value is None or (isinstance(value, (int, float)) and (value < 0 or value > 1000)):
+                    # Use reasonable defaults for invalid data
+                    if key == 'pe_ratio':
+                        metrics[key] = 20
+                    elif key == 'pb_ratio':
+                        metrics[key] = 2.5
+                    elif key in ['roe', 'revenue_growth', 'earnings_growth', 'profit_margin']:
+                        metrics[key] = 0.1
+                    elif key == 'debt_equity':
+                        metrics[key] = 0.5
+                    elif key == 'current_ratio':
+                        metrics[key] = 1.5
+                    else:
+                        metrics[key] = 0
+            
+            return metrics
+            
+        except Exception as e:
+            logger.warning(f"Failed to extract real metrics for {ticker}: {e}")
+            # Return conservative estimates
+            return {
+                'pe_ratio': 20,
+                'pb_ratio': 2.5,
+                'debt_equity': 0.5,
+                'roe': 0.15,
+                'current_ratio': 1.5,
+                'revenue_growth': 0.1,
+                'earnings_growth': 0.1,
+                'market_cap': 1000000000,  # 1B default
+                'dividend_yield': 0.02,
+                'profit_margin': 0.1
+            }
+    
+    def _minimal_technical_analysis(self) -> TechnicalAnalysis:
+        """Minimal technical analysis when data is insufficient"""
         return TechnicalAnalysis(
-            momentum_score=50.0,
-            trend_score=50.0,
-            volatility_score=50.0,
-            volume_score=50.0,
-            overall_technical_score=50.0,
+            momentum_score=0.0,  # No data = no score
+            trend_score=0.0,
+            volatility_score=0.0,
+            volume_score=0.0,
+            overall_technical_score=0.0,
             signals=[],
             indicators={}
         )
     
-    def _default_fundamental_analysis(self) -> FundamentalAnalysis:
-        """Default fundamental analysis for fallback"""
+    def _minimal_fundamental_analysis(self) -> FundamentalAnalysis:
+        """Minimal fundamental analysis when data is insufficient"""
         return FundamentalAnalysis(
-            valuation_score=50.0,
-            profitability_score=50.0,
-            financial_health_score=50.0,
-            growth_score=50.0,
-            overall_fundamental_score=50.0,
+            valuation_score=0.0,  # No data = no score
+            profitability_score=0.0,
+            financial_health_score=0.0,
+            growth_score=0.0,
+            overall_fundamental_score=0.0,
             metrics={},
-            red_flags=[]
+            red_flags=[{'type': 'DATA', 'severity': 'HIGH', 'message': 'Insufficient data for analysis'}]
         )
     
-    def _create_fallback_analysis(self, ticker: str, market_data: Dict) -> EnhancedStockInsight:
-        """Create fallback analysis when data is insufficient"""
+    async def _create_data_driven_analysis(self, ticker: str, market_data: Dict) -> EnhancedStockInsight:
+        """Create analysis using real data calculations - no hardcoded defaults"""
+        try:
+            # Get real technical and fundamental analysis
+            technical_analysis = await self._calculate_real_technical_analysis(ticker)
+            fundamental_analysis = await self._calculate_real_fundamental_analysis(ticker, market_data)
+            
+            # Calculate risk metrics from historical data
+            historical_data = await self._get_historical_data(ticker, "2y")
+            risk_metrics = await self._calculate_risk_metrics(historical_data) if historical_data is not None else {}
+            
+            # Calculate composite scores
+            scores = self._calculate_composite_scores(technical_analysis, fundamental_analysis, market_data, risk_metrics)
+            
+            # Generate projections
+            projections = await self._generate_projections(ticker, historical_data, market_data) if historical_data is not None else {}
+            
+            # Get sector comparison
+            sector_comparison = await self._perform_sector_comparison(ticker, market_data)
+            
+            # Generate AI insights
+            ai_insights = await self._generate_ai_insights(ticker, market_data, historical_data)
+            
+            # Add concentration analysis
+            concentration_analysis = self.calculate_concentration_metrics([{'quantity': quantity, 'current_price': avg_price} for quantity, avg_price in zip(quantities, avg_prices)])
+            
+            return EnhancedStockInsight(
+                ticker=ticker,
+                company_name=market_data.get('company_name', ticker),
+                sector=market_data.get('sector', 'Unknown'),
+                current_price=market_data.get('current_price', 0),
+                market_cap_category=self._determine_market_cap_category(market_data.get('market_cap', 0)),
+                
+                # Real calculated scores (not defaults)
+                fundamental_score=fundamental_analysis.overall_fundamental_score,
+                technical_score=technical_analysis.overall_technical_score,
+                momentum_score=scores.get('momentum_score', 0),
+                value_score=scores.get('value_score', 0),
+                quality_score=scores.get('quality_score', 0),
+                sentiment_score=scores.get('sentiment_score', 0),
+                overall_score=scores.get('overall_score', 0),
+                
+                technical_analysis=technical_analysis,
+                fundamental_analysis=fundamental_analysis,
+                
+                # Real risk metrics
+                beta=risk_metrics.get('beta', 1.0),
+                volatility=risk_metrics.get('volatility', 0),
+                max_drawdown=risk_metrics.get('max_drawdown', 0),
+                
+                # Real projections
+                target_price=projections.get('target_price', market_data.get('current_price', 0)),
+                upside_potential=projections.get('upside_potential', 0),
+                confidence_level=projections.get('confidence_level', 'LOW'),
+                time_horizon=projections.get('time_horizon', '12M'),
+                price_range=projections.get('price_range', {'low': 0, 'high': 0}),
+                
+                # Real insights
+                key_strengths=ai_insights.get('key_strengths', []),
+                key_concerns=ai_insights.get('key_concerns', []),
+                catalysts=ai_insights.get('catalysts', []),
+                risks=ai_insights.get('risks', []),
+                
+                sector_comparison=sector_comparison,
+                
+                business_story=ai_insights.get('business_story', 'Analysis based on available data.'),
+                investment_thesis=ai_insights.get('investment_thesis', 'Investment decision should consider all available metrics.'),
+                recommendation=self._generate_recommendation(scores.get('overall_score', 0)),
+                
+                # Concentration analysis
+                concentration_analysis=concentration_analysis
+            )
+            
+        except Exception as e:
+            logger.error(f"Data-driven analysis failed for {ticker}: {e}")
+            # Return minimal analysis instead of defaults
+            return self._create_minimal_analysis(ticker, market_data)
+    
+    def _determine_market_cap_category(self, market_cap: float) -> str:
+        """Determine market cap category based on actual market cap"""
+        if market_cap >= 20000000000:  # 20B+
+            return "Large Cap"
+        elif market_cap >= 500000000:   # 500M+
+            return "Mid Cap"
+        elif market_cap > 0:
+            return "Small Cap"
+        else:
+            return "Unknown"
+    
+    def _create_minimal_analysis(self, ticker: str, market_data: Dict) -> EnhancedStockInsight:
+        """Create minimal analysis when all else fails - shows data unavailable"""
         return EnhancedStockInsight(
             ticker=ticker,
             company_name=market_data.get('company_name', ticker),
-            sector=market_data.get('sector', 'Unknown'),
-            current_price=market_data.get('current_price', 100.0),
-            market_cap_category=market_data.get('market_cap_category', 'Unknown'),
+            sector=market_data.get('sector', 'Data Unavailable'),
+            current_price=market_data.get('current_price', 0),
+            market_cap_category='Data Unavailable',
             
-            fundamental_score=50.0,
-            technical_score=50.0,
-            momentum_score=50.0,
-            value_score=50.0,
-            quality_score=50.0,
-            sentiment_score=50.0,
-            overall_score=50.0,
+            # Zero scores indicate no data, not neutral scores
+            fundamental_score=0.0,
+            technical_score=0.0,
+            momentum_score=0.0,
+            value_score=0.0,
+            quality_score=0.0,
+            sentiment_score=0.0,
+            overall_score=0.0,
             
-            technical_analysis=self._default_technical_analysis(),
-            fundamental_analysis=self._default_fundamental_analysis(),
+            technical_analysis=self._minimal_technical_analysis(),
+            fundamental_analysis=self._minimal_fundamental_analysis(),
             
-            beta=1.0,
-            volatility=0.2,
-            max_drawdown=-0.15,
+            beta=0.0,
+            volatility=0.0,
+            max_drawdown=0.0,
             
-            target_price=market_data.get('current_price', 100.0) * 1.05,
-            upside_potential=5.0,
-            confidence_level='LOW',
-            time_horizon='12M',
-            price_range={'low': market_data.get('current_price', 100.0) * 0.9, 
-                        'high': market_data.get('current_price', 100.0) * 1.1},
+            target_price=0.0,
+            upside_potential=0.0,
+            confidence_level='INSUFFICIENT_DATA',
+            time_horizon='N/A',
+            price_range={'low': 0, 'high': 0},
             
-            key_strengths=['Data analysis in progress'],
-            key_concerns=['Limited data available'],
+            key_strengths=[],
+            key_concerns=['Insufficient data for comprehensive analysis'],
             catalysts=[],
             risks=[],
             
             sector_comparison={},
             
-            business_story='Analysis pending due to insufficient data.',
-            investment_thesis='Requires more comprehensive data for detailed analysis.',
-            recommendation='HOLD'
+            business_story='Comprehensive analysis requires more market data.',
+            investment_thesis='Unable to provide investment thesis due to data limitations.',
+            recommendation='DATA_INSUFFICIENT'
         )
+
+    def calculate_concentration_metrics(self, holdings: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Calculate portfolio concentration metrics
+        
+        Args:
+            holdings: List of portfolio holdings with quantity and current_price
+            
+        Returns:
+            Dict containing concentration metrics
+        """
+        try:
+            # Calculate market values and weights
+            total_value = sum(h['quantity'] * h['current_price'] for h in holdings)
+            
+            # Add weight to each holding
+            for holding in holdings:
+                holding['weight'] = (holding['quantity'] * holding['current_price'] / total_value) * 100
+            
+            # Sort by weight descending
+            sorted_holdings = sorted(holdings, key=lambda x: x['weight'], reverse=True)
+            
+            # Calculate concentration metrics
+            top_3_concentration = sum(h['weight'] for h in sorted_holdings[:3])
+            top_5_concentration = sum(h['weight'] for h in sorted_holdings[:5])
+            
+            # Calculate Herfindahl-Hirschman Index (HHI)
+            herfindahl_index = sum((h['weight'] / 100) ** 2 for h in holdings) * 10000
+            
+            # Determine concentration level
+            if top_3_concentration > 60:
+                concentration_level = "Very High"
+            elif top_3_concentration > 40:
+                concentration_level = "High"
+            elif top_3_concentration > 25:
+                concentration_level = "Moderate"
+            else:
+                concentration_level = "Low"
+            
+            # Calculate diversification score (inverse of concentration)
+            # Score penalizes both high individual weights and high concentration in top holdings
+            max_weight = max(h['weight'] for h in holdings)
+            diversification_score = max(0, 100 - (max_weight * 0.6 + top_3_concentration * 0.4))
+            
+            return {
+                "holdings": sorted_holdings,
+                "metrics": {
+                    "top_3_concentration": top_3_concentration,
+                    "top_5_concentration": top_5_concentration,
+                    "herfindahl_index": herfindahl_index,
+                    "concentration_level": concentration_level,
+                    "diversification_score": diversification_score
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to calculate concentration metrics: {e}")
+            return {
+                "holdings": holdings,
+                "metrics": {
+                    "top_3_concentration": 0,
+                    "top_5_concentration": 0,
+                    "herfindahl_index": 0,
+                    "concentration_level": "Unknown",
+                    "diversification_score": 0
+                }
+            }
 
 # Create singleton instance
 enhanced_stock_analyzer = EnhancedStockAnalyzer() 

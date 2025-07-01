@@ -11,7 +11,8 @@ import {
   CheckCircle,
   Star,
   ArrowRight,
-  Sparkles
+  Sparkles,
+  LineChart
 } from 'lucide-react'
 import EnhancedStockInsightsPanel from './EnhancedStockInsightsPanel'
 import PortfolioHealthDashboard from '../results/PortfolioHealthDashboard'
@@ -22,6 +23,7 @@ import RecommendationsPanel from '../results/RecommendationsPanel'
 import EnhancedStockInsights from '../results/EnhancedStockInsights'
 import StockInsightCards from '../results/StockInsightCards'
 import { MLPredictionsChart } from './MLPredictionsChart'
+import PortfolioGraphs from './PortfolioGraphs'
 
 interface EnhancedDashboardProps {
   data: any
@@ -213,8 +215,24 @@ const EnhancedQuickInsights = ({ data }: { data: any }) => {
 }
 
 export default function EnhancedDashboard({ data }: EnhancedDashboardProps) {
-  const [selectedTab, setSelectedTab] = useState('overview')
+  const [activeTab, setActiveTab] = useState('overview')
   const [realTimeUpdate, setRealTimeUpdate] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Handle data loading errors
+  useEffect(() => {
+    if (!data) {
+      setError('Failed to load analysis data')
+      return
+    }
+
+    if (data.error) {
+      setError(data.error)
+      return
+    }
+
+    setError(null)
+  }, [data])
 
   // Simulate real-time updates (for demo purposes)
   useEffect(() => {
@@ -226,34 +244,30 @@ export default function EnhancedDashboard({ data }: EnhancedDashboardProps) {
   }, [])
 
   const tabs = [
-    { 
-      id: 'overview', 
-      label: 'Portfolio Overview', 
-      icon: BarChart3,
-      description: 'Complete portfolio health and performance summary'
+    {
+      id: 'overview',
+      name: 'Portfolio Overview',
+      icon: Activity
     },
-    { 
-      id: 'enhanced-analysis', 
-      label: 'Enhanced Analysis', 
-      icon: Brain,
-      description: 'AI-powered individual stock insights with multi-factor scoring'
+    {
+      id: 'enhanced',
+      name: 'Enhanced Analysis',
+      icon: Brain
     },
-    { 
-      id: 'performance', 
-      label: 'Performance & ML', 
-      icon: TrendingUp,
-      description: 'Performance metrics and machine learning predictions'
+    {
+      id: 'performance',
+      name: 'Performance & ML',
+      icon: TrendingUp
     },
-    { 
-      id: 'action-plan', 
-      label: 'Action Plan', 
-      icon: Target,
-      description: 'Recommended actions and improvement opportunities'
+    {
+      id: 'graphs',
+      name: 'Portfolio Graphs',
+      icon: BarChart3
     }
   ]
 
   const renderTabContent = () => {
-    switch (selectedTab) {
+    switch (activeTab) {
       case 'overview':
         return (
           <div className="space-y-8">
@@ -266,7 +280,7 @@ export default function EnhancedDashboard({ data }: EnhancedDashboardProps) {
           </div>
         )
 
-      case 'enhanced-analysis':
+      case 'enhanced':
         return (
           <div className="space-y-8">
             <div className="bg-white rounded-xl border border-gray-200 p-6">
@@ -335,28 +349,33 @@ export default function EnhancedDashboard({ data }: EnhancedDashboardProps) {
           </div>
         )
 
-      case 'action-plan':
-        return (
-          <div className="space-y-8">
-            <div className="bg-white rounded-xl border border-gray-200 p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
-                  <Target className="w-5 h-5 text-orange-600" />
-                </div>
-                <div>
-                  <h2 className="text-xl font-bold text-gray-900">Strategic Action Plan</h2>
-                  <p className="text-gray-600">Recommended actions based on enhanced analysis</p>
-                </div>
-              </div>
-            </div>
-            <ActionPlan data={data} />
-            <RecommendationsPanel data={data} />
-          </div>
-        )
+      case 'graphs':
+        return <PortfolioGraphs data={data} />
 
       default:
         return null
     }
+  }
+
+  if (error) {
+    return (
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+            <AlertTriangle className="w-5 h-5 text-red-600" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">Analysis Error</h2>
+            <p className="text-gray-600">{error}</p>
+          </div>
+        </div>
+        <div className="mt-4 p-4 bg-red-50 rounded-lg">
+          <p className="text-sm text-red-700">
+            Please try refreshing the page or contact support if the problem persists.
+          </p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -364,39 +383,39 @@ export default function EnhancedDashboard({ data }: EnhancedDashboardProps) {
       {/* Enhanced Status Banner */}
       <EnhancedStatusBanner data={data} />
 
-      {/* Navigation Tabs */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-10 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex overflow-x-auto">
+      {/* Tabs */}
+      <div className="bg-white rounded-xl border border-gray-200">
+        <div className="border-b border-gray-200">
+          <nav className="flex -mb-px" aria-label="Tabs">
             {tabs.map((tab) => {
-              const IconComponent = tab.icon
+              const Icon = tab.icon
+              const isActive = activeTab === tab.id
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setSelectedTab(tab.id)}
-                  className={`group flex items-center gap-3 px-6 py-4 border-b-2 font-medium text-sm whitespace-nowrap transition-all duration-200 ${
-                    selectedTab === tab.id
-                      ? 'border-blue-500 text-blue-600 bg-blue-50'
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`
+                    w-full py-4 px-1 text-center border-b-2 font-medium text-sm
+                    ${isActive
+                      ? 'border-indigo-500 text-indigo-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
+                    }
+                  `}
                 >
-                  <IconComponent className={`w-4 h-4 ${
-                    selectedTab === tab.id ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'
-                  }`} />
-                  <div className="text-left">
-                    <div className="font-medium">{tab.label}</div>
-                    <div className="text-xs text-gray-500 hidden lg:block">{tab.description}</div>
+                  <div className="flex flex-col items-center gap-1">
+                    <Icon className="w-5 h-5" />
+                    <span>{tab.name}</span>
                   </div>
                 </button>
               )
             })}
-          </div>
+          </nav>
         </div>
-      </div>
 
-      {/* Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {renderTabContent()}
+        {/* Tab Panels */}
+        <div className="p-6">
+          {renderTabContent()}
+        </div>
       </div>
     </div>
   )

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Query, Body
 from fastapi.responses import JSONResponse
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
 import uuid
 import asyncio
 import json
@@ -11,6 +11,7 @@ import time
 import sys
 from pathlib import Path
 import logging
+import numpy as np
 
 from app.models.analysis import (
     AnalysisRequest,
@@ -103,41 +104,75 @@ def load_demo_analysis():
         raise HTTPException(status_code=500, detail="Demo analysis file not found")
 
 
-def load_analysis_by_id(analysis_id: str):
-    """
-    Load analysis data by ID, handling both full UUIDs and truncated UUIDs.
-    Tries multiple strategies to find the analysis file.
-    """
+class NumpyJSONEncoder(json.JSONEncoder):
+    """Custom JSON encoder for numpy types"""
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super().default(obj)
+
+
+def save_analysis_results(analysis_id: str, analysis_data: Dict[str, Any]) -> Tuple[bool, str]:
+    """Save analysis results with proper JSON encoding"""
+    try:
+        processed_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "processed")
+        os.makedirs(processed_dir, exist_ok=True)
+        
+        file_path = os.path.join(processed_dir, f"portfolio-analysis-{analysis_id[:8]}.json")
+        
+        with open(file_path, 'w') as f:
+            json.dump(analysis_data, f, cls=NumpyJSONEncoder, indent=2)
+            
+        return True, file_path
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to save analysis results: {e}")
+        return False, str(e)
+
+
+def load_analysis_by_id(analysis_id: str) -> Dict[str, Any]:
+    """Load analysis data by ID with improved error handling"""
     try:
         # Strategy 1: Try to load using the full analysis_id as-is
         success, analysis_data, error = analysis_file_saver.get_analysis_by_id(analysis_id)
         if success:
             return analysis_data
         
-        # Strategy 2: Try with truncated UUID (first 8 characters) for portfolio-analysis files
+        # Strategy 2: Try with truncated UUID (first 8 characters)
         truncated_id = analysis_id[:8]
-        portfolio_analysis_id = f"portfolio-analysis-{truncated_id}"
-        success, analysis_data, error = analysis_file_saver.get_analysis_by_id(portfolio_analysis_id)
-        if success:
-            return analysis_data
         
-        # Strategy 3: Try with demo-portfolio-analysis prefix (new format)
-        demo_portfolio_analysis_id = f"demo-portfolio-analysis-{truncated_id}"
-        success, analysis_data, error = analysis_file_saver.get_analysis_by_id(demo_portfolio_analysis_id)
-        if success:
-            return analysis_data
+        # Try different file patterns
+        file_patterns = [
+            f"portfolio-analysis-{truncated_id}.json",
+            f"demo-portfolio-analysis-{truncated_id}.json",
+            f"{truncated_id}.json"
+        ]
         
-        # Strategy 4: Try with just the truncated ID
-        success, analysis_data, error = analysis_file_saver.get_analysis_by_id(truncated_id)
-        if success:
-            return analysis_data
+        processed_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "processed")
         
-        # Strategy 5: Fallback to demo analysis if nothing found
-        print(f"Warning: No analysis found for ID {analysis_id}, falling back to demo data")
+        for pattern in file_patterns:
+            file_path = os.path.join(processed_dir, pattern)
+            if os.path.exists(file_path):
+                try:
+                    with open(file_path, 'r') as f:
+                        return json.load(f)
+                except json.JSONDecodeError as je:
+                    logger.error(f"❌ Invalid JSON in {file_path}: {je}")
+                    continue
+                except Exception as e:
+                    logger.error(f"❌ Error reading {file_path}: {e}")
+                    continue
+        
+        # If no file found, load demo data
+        logger.warning(f"No analysis found for ID {analysis_id}, falling back to demo data")
         return load_demo_analysis()
         
     except Exception as e:
-        print(f"Error loading analysis {analysis_id}: {e}, falling back to demo data")
+        logger.error(f"❌ Error loading analysis {analysis_id}: {e}")
         return load_demo_analysis()
 
 
@@ -740,66 +775,68 @@ async def get_enhanced_stocks_analysis(
             detail=f"Batch enhanced analysis failed: {str(e)}"
         )
 
-@router.post("/portfolio/enhanced")
-async def analyze_portfolio_enhanced(
-    portfolio_input: PortfolioInput,
-    background_tasks: BackgroundTasks,
-    user_profile: UserProfile = Body(...)
+@router.post("/portfolio/analyze")
+async def analyze_portfolio(
+    request: AnalysisRequest
 ):
-    """
-    Perform enhanced portfolio analysis with detailed individual stock insights
-    
-    This endpoint provides:
-    - Standard portfolio analysis
-    - Detailed technical and fundamental analysis for each stock
-    - Multi-factor scoring system
-    - Risk metrics and projections
-    - AI-powered insights and recommendations
-    """
+    """Analyze portfolio with improved error handling"""
     try:
-        logger.info("🚀 Enhanced portfolio analysis request received")
+        # Generate analysis ID
+        analysis_id = str(uuid.uuid4())
         
-        if not ENHANCED_ANALYSIS_AVAILABLE:
-            raise HTTPException(
-                status_code=503, 
-                detail="Enhanced analysis service temporarily unavailable"
-            )
-        
-        # Validate portfolio input
-        if not portfolio_input.holdings:
-            raise HTTPException(
-                status_code=400,
-                detail="Portfolio must contain at least one holding"
-            )
-        
-        # Generate unique analysis ID
-        analysis_id = f"enhanced_{uuid.uuid4().hex[:8]}"
-        
-        # Perform enhanced analysis
-        enhanced_analysis = await intelligence_service.get_enhanced_portfolio_analysis(
-            portfolio_input, user_profile
-        )
-        
-        # Add metadata
-        enhanced_analysis["analysis_id"] = analysis_id
-        enhanced_analysis["analysis_type"] = "enhanced_portfolio"
-        enhanced_analysis["request_timestamp"] = datetime.now().isoformat()
-        
-        logger.info(f"✅ Enhanced portfolio analysis completed (ID: {analysis_id})")
-        
-        return {
-            "status": "success",
-            "analysis_id": analysis_id,
-            "data": enhanced_analysis,
-            "message": "Enhanced portfolio analysis completed successfully",
+        # Initialize analysis status tracking
+        analysis_status_storage[analysis_id] = {
+            "status": "processing",
+            "progress": 10,
+            "message": "Initializing portfolio analysis...",
             "timestamp": datetime.now().isoformat()
         }
         
-    except HTTPException:
-        raise
+        # Store request for processing
+        portfolios_storage[analysis_id] = request.portfolio
+        user_profiles_storage[analysis_id] = request.user_profile
+        
+        try:
+            # Run enhanced analysis
+            enhanced_results = await intelligence_service.get_enhanced_portfolio_analysis(
+                request.portfolio,
+                request.user_profile
+            )
+            
+            # Convert to frontend format
+            frontend_format = convert_enhanced_analysis_to_frontend_format(enhanced_results)
+            
+            # Save results
+            save_success, file_path = save_analysis_results(analysis_id, frontend_format)
+            
+            if not save_success:
+                logger.warning(f"⚠️ Failed to save analysis results to file")
+            
+            return {
+                "success": True,
+                "analysisId": analysis_id,
+                "message": "Analysis completed successfully",
+                "data": {
+                    "portfolio": request.portfolio,
+                    "estimatedProcessingTime": "Analysis completed",
+                    "intelligence_used": True,
+                    "file_saved": save_success
+                }
+            }
+            
+        except Exception as analysis_error:
+            logger.error(f"❌ Analysis error: {analysis_error}")
+            # Update status to show error
+            analysis_status_storage[analysis_id].update({
+                "status": "error",
+                "progress": 0,
+                "message": f"Analysis failed: {str(analysis_error)}",
+                "timestamp": datetime.now().isoformat()
+            })
+            raise
+            
     except Exception as e:
-        logger.error(f"❌ Enhanced portfolio analysis failed: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Enhanced portfolio analysis failed: {str(e)}"
+            detail=f"Failed to analyze portfolio: {str(e)}"
         ) 

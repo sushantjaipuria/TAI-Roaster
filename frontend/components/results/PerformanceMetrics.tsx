@@ -5,7 +5,7 @@ import { ResultsComponentProps, TimeframePerformance } from '../../lib/types-res
 export default function PerformanceMetrics({ data }: ResultsComponentProps) {
   const [selectedTimeframe, setSelectedTimeframe] = useState<string>('1Y')
 
-  // Check if we have real performance data
+  // Check if we have real performance data from backend
   const hasRealData = data.performanceMetrics && data.performanceMetrics.length > 0
   
   // Get performance data for selected timeframe
@@ -25,87 +25,55 @@ export default function PerformanceMetrics({ data }: ResultsComponentProps) {
     'R-Squared': 'Correlation with benchmark (1.0 = perfect correlation)'
   }
 
+  // Component for metric tooltips
   const MetricTooltip = ({ metric, children }: { metric: string; children: React.ReactNode }) => {
-    const [showTooltip, setShowTooltip] = useState(false)
-    
     return (
-      <div className="relative">
-        <div 
-          className="flex items-center gap-1 cursor-help"
-          onMouseEnter={() => setShowTooltip(true)}
-          onMouseLeave={() => setShowTooltip(false)}
-        >
-          {children}
-          <Info className="w-3 h-3 text-gray-400" />
-        </div>
-        
-        {showTooltip && (
-          <div className="absolute bottom-full left-0 mb-2 p-2 bg-gray-900 text-white text-xs rounded-lg max-w-xs z-10">
-            {metricDefinitions[metric] || 'Metric definition not available'}
-            <div className="absolute top-full left-2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+      <div className="group relative">
+        {children}
+        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:block z-10">
+          <div className="bg-gray-900 text-white text-xs rounded py-2 px-3 whitespace-nowrap">
+            {metricDefinitions[metric] || 'Performance metric'}
+            <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
           </div>
-        )}
+        </div>
       </div>
     )
   }
 
-  // Generate synthetic performance data when real data is unavailable
-  const generateSyntheticPerformance = () => {
-    const timeframes = [
-      { timeframe: '1M', days: 30 },
-      { timeframe: '3M', days: 90 },
-      { timeframe: '1Y', days: 365 }
-    ]
-    
-    return timeframes.map(({ timeframe, days }) => {
-             // Generate realistic portfolio performance based on stocks
-       const baseReturn = data.stocks ? data.stocks.reduce((acc: number, stock: any) => {
-         const stockReturn = stock.currentPrice && stock.avgPrice 
-           ? ((stock.currentPrice - stock.avgPrice) / stock.avgPrice) * 100 
-           : Math.random() * 20 - 5  // Random -5% to 15%
-         return acc + stockReturn * ((stock.allocation || 10) / 100)
-       }, 0) : Math.random() * 15 - 2
-
-      // Adjust for timeframe
-      const annualizedReturn = timeframe === '1M' ? baseReturn * 12 : 
-                             timeframe === '3M' ? baseReturn * 4 : baseReturn
-      
-      const benchmarkReturn = annualizedReturn * (0.8 + Math.random() * 0.4) // Benchmark typically 80-120% of portfolio
-      const volatility = 12 + Math.random() * 18 // 12-30% volatility
-      const sharpeRatio = Math.max(0.2, (annualizedReturn - 6) / volatility) // Risk-adjusted return
-      
-      return {
-        timeframe: timeframe as '1M' | '3M' | '1Y',
-        returns: annualizedReturn,
-        annualizedReturn: annualizedReturn,
-        benchmarkReturns: benchmarkReturn,
-        outperformance: annualizedReturn - benchmarkReturn,
-                 metrics: {
-           cagr: annualizedReturn,
-           alpha: (annualizedReturn - benchmarkReturn) / 100,
-           beta: 0.8 + Math.random() * 0.6, // 0.8-1.4 beta
-           rSquared: 0.65 + Math.random() * 0.3, // 0.65-0.95 correlation
-           sharpeRatio: sharpeRatio,
-           sortinoRatio: sharpeRatio * 1.2, // Typically higher than Sharpe
-           volatility: volatility,
-           downsideDeviation: volatility * 0.7, // Typically lower than volatility
-           maxDrawdown: -(volatility * 0.3 + Math.random() * volatility * 0.2), // Max drawdown related to volatility
-           trackingError: volatility * 0.5, // Tracking error vs benchmark
-           informationRatio: sharpeRatio * 0.8, // Information ratio
-           calmarRatio: Math.abs(annualizedReturn / (volatility * 0.4)) // Calmar ratio
-         }
-      }
-    })
-  }
-
-  // Use real data if available, otherwise generate synthetic
-  const performanceData = hasRealData ? data.performanceMetrics : generateSyntheticPerformance()
-  const hasGeneratedData = !hasRealData
-
+  // If no real data available, show message instead of generating fake data
   if (!hasRealData) {
-    // Update data object with synthetic data for component to work
-    data.performanceMetrics = performanceData
-    data.benchmarkName = data.benchmarkName || 'NIFTY 50'
+    return (
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">📈 Performance Metrics</h2>
+            <p className="text-sm text-gray-600 mt-1">
+              Portfolio returns vs {data.benchmarkName || 'NIFTY 50'} comparison
+            </p>
+          </div>
+        </div>
+
+        <div className="text-center py-12">
+          <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <BarChart3 className="w-8 h-8 text-blue-600" />
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Performance Data Processing</h3>
+          <p className="text-gray-600 mb-4">
+            We're calculating real performance metrics using historical market data.
+          </p>
+          <div className="bg-blue-50 rounded-lg p-4 max-w-md mx-auto">
+            <p className="text-sm text-blue-800">
+              <strong>Real Calculations Include:</strong><br/>
+              • Historical returns analysis<br/>
+              • Risk-adjusted metrics (Sharpe, Sortino)<br/>
+              • Benchmark comparison vs NIFTY 50<br/>
+              • Maximum drawdown analysis<br/>
+              • Volatility measurements
+            </p>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -114,8 +82,14 @@ export default function PerformanceMetrics({ data }: ResultsComponentProps) {
         <div>
           <h2 className="text-xl font-bold text-gray-900">📈 Performance Metrics</h2>
           <p className="text-sm text-gray-600 mt-1">
-            Portfolio returns vs {data.benchmarkName} comparison
+            Portfolio returns vs {data.benchmarkName || 'NIFTY 50'} comparison
           </p>
+        </div>
+        
+        {/* Real Data Badge */}
+        <div className="flex items-center gap-2 px-3 py-1 bg-green-100 rounded-lg">
+          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+          <span className="text-sm font-medium text-green-800">Real Data</span>
         </div>
       </div>
 
@@ -165,7 +139,7 @@ export default function PerformanceMetrics({ data }: ResultsComponentProps) {
                 
                 {/* Benchmark Return */}
                 <div className="mb-3">
-                  <div className="text-sm text-gray-600">{data.benchmarkName}</div>
+                  <div className="text-sm text-gray-600">{data.benchmarkName || 'NIFTY 50'}</div>
                   <div className={`text-xl font-medium ${benchmarkReturn >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                     {benchmarkReturn >= 0 ? '+' : ''}{benchmarkReturn.toFixed(1)}%
                   </div>
@@ -259,8 +233,11 @@ export default function PerformanceMetrics({ data }: ResultsComponentProps) {
                   <MetricTooltip metric="Volatility">
                     <div className="text-sm font-medium text-gray-700">Volatility</div>
                   </MetricTooltip>
-                  <div className="text-xl font-bold text-gray-900">
-                    {selectedPerformance.metrics.volatility.toFixed(1)}%
+                  <div className={`text-xl font-bold ${
+                    selectedPerformance.metrics.volatility <= 0.15 ? 'text-green-600' : 
+                    selectedPerformance.metrics.volatility <= 0.25 ? 'text-yellow-600' : 'text-red-600'
+                  }`}>
+                    {(selectedPerformance.metrics.volatility * 100).toFixed(1)}%
                   </div>
                 </div>
 
@@ -269,8 +246,11 @@ export default function PerformanceMetrics({ data }: ResultsComponentProps) {
                   <MetricTooltip metric="Max Drawdown">
                     <div className="text-sm font-medium text-gray-700">Max Drawdown</div>
                   </MetricTooltip>
-                  <div className="text-xl font-bold text-red-600">
-                    {selectedPerformance.metrics.maxDrawdown.toFixed(1)}%
+                  <div className={`text-xl font-bold ${
+                    selectedPerformance.metrics.maxDrawdown >= -0.1 ? 'text-green-600' : 
+                    selectedPerformance.metrics.maxDrawdown >= -0.2 ? 'text-yellow-600' : 'text-red-600'
+                  }`}>
+                    {(selectedPerformance.metrics.maxDrawdown * 100).toFixed(1)}%
                   </div>
                 </div>
 
@@ -280,71 +260,13 @@ export default function PerformanceMetrics({ data }: ResultsComponentProps) {
                     <div className="text-sm font-medium text-gray-700">R-Squared</div>
                   </MetricTooltip>
                   <div className="text-xl font-bold text-gray-900">
-                    {selectedPerformance.metrics.rSquared.toFixed(3)}
+                    {selectedPerformance.metrics.rSquared.toFixed(2)}
                   </div>
                 </div>
               </div>
             </div>
           </div>
         )}
-      </div>
-
-      {/* Performance Summary Cards */}
-      <div className="mt-8 pt-6 border-t border-gray-200">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {/* Best Period */}
-          <div className="bg-green-50 rounded-lg p-4 text-center">
-            <TrendingUp className="w-6 h-6 text-green-600 mx-auto mb-2" />
-            <div className="text-sm font-medium text-green-800">Best Period</div>
-            <div className="text-lg font-bold text-green-600">
-              {Math.max(...data.performanceMetrics.filter(p => ['1M', '1Y'].includes(p.timeframe)).map(p => p.returns)).toFixed(1)}%
-            </div>
-            <div className="text-xs text-green-600">
-              {data.performanceMetrics.filter(p => ['1M', '1Y'].includes(p.timeframe)).find(p => p.returns === Math.max(...data.performanceMetrics.filter(p => ['1M', '1Y'].includes(p.timeframe)).map(p => p.returns)))?.timeframe}
-            </div>
-          </div>
-
-          {/* Risk-Adjusted Return */}
-          <div className="bg-blue-50 rounded-lg p-4 text-center">
-            <Target className="w-6 h-6 text-blue-600 mx-auto mb-2" />
-            <div className="text-sm font-medium text-blue-800">Best Sharpe</div>
-            <div className="text-lg font-bold text-blue-600">
-              {Math.max(...data.performanceMetrics.filter(p => ['1M', '1Y'].includes(p.timeframe)).map(p => p.metrics.sharpeRatio)).toFixed(2)}
-            </div>
-            <div className="text-xs text-blue-600">Risk-adjusted</div>
-          </div>
-
-          {/* Consistency */}
-          <div className="bg-purple-50 rounded-lg p-4 text-center">
-            <BarChart3 className="w-6 h-6 text-purple-600 mx-auto mb-2" />
-            <div className="text-sm font-medium text-purple-800">Avg Outperformance</div>
-            <div className="text-lg font-bold text-purple-600">
-              {(() => {
-              const filteredMetrics = data.performanceMetrics.filter(p => ['1M', '1Y'].includes(p.timeframe))
-              return (filteredMetrics.reduce((sum, p) => sum + p.outperformance, 0) / filteredMetrics.length).toFixed(1)
-            })()}%
-            </div>
-            <div className="text-xs text-purple-600">vs {data.benchmarkName}</div>
-          </div>
-
-          {/* Risk Level */}
-          <div className="bg-orange-50 rounded-lg p-4 text-center">
-            <div className="w-6 h-6 mx-auto mb-2 flex items-center justify-center">
-              <div className={`w-4 h-4 rounded-full ${
-                (selectedPerformance?.metrics?.volatility || 20) < 15 ? 'bg-green-500' :
-                (selectedPerformance?.metrics?.volatility || 20) < 25 ? 'bg-yellow-500' : 'bg-red-500'
-              }`}></div>
-            </div>
-            <div className="text-sm font-medium text-orange-800">Risk Level</div>
-            <div className="text-lg font-bold text-orange-600">
-              {(selectedPerformance?.metrics?.volatility || 20) < 15 ? 'Low' :
-               (selectedPerformance?.metrics?.volatility || 20) < 25 ? 'Medium' : 'High'}
-            </div>
-            <div className="text-xs text-orange-600">
-              {(selectedPerformance?.metrics?.volatility || 20).toFixed(1)}% volatility
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   )
