@@ -812,264 +812,6 @@ class IntelligenceService:
                     # Get historical data for all holdings
                     portfolio_returns = []
                     portfolio_weights = []
-                    
-                    # Calculate total portfolio value for weights
-                    total_portfolio_value = sum(
-                        holding.quantity * (holding.current_price or holding.avg_buy_price) 
-                        for holding in holdings
-                    )
-                    
-                    # Get historical data for each holding
-                    for holding in holdings:
-                        try:
-                            # Fetch historical data
-                            ticker_data = yf.download(
-                                f"{holding.ticker}.NS", 
-                                start=start_date, 
-                                end=end_date,
-                                progress=False
-                            )
-                            
-                            if not ticker_data.empty and len(ticker_data) > 1:
-                                # Calculate returns for this stock
-                                stock_returns = ticker_data['Adj Close'].pct_change().dropna()
-                                
-                                # Calculate weight in portfolio
-                                holding_value = holding.quantity * (holding.current_price or holding.avg_buy_price)
-                                weight = holding_value / total_portfolio_value if total_portfolio_value > 0 else 0
-                                
-                                portfolio_returns.append(stock_returns)
-                                portfolio_weights.append(weight)
-                                
-                                logger.debug(f"✅ Got {len(stock_returns)} returns for {holding.ticker}")
-                            else:
-                                logger.warning(f"⚠️ No data for {holding.ticker}")
-                                
-                        except Exception as e:
-                            logger.warning(f"Failed to get data for {holding.ticker}: {e}")
-                            continue
-                    
-                    # Get benchmark data (NIFTY 50)
-                    benchmark_returns = None
-                    try:
-                        benchmark_data = yf.download("^NSEI", start=start_date, end=end_date, progress=False)
-                        if not benchmark_data.empty:
-                            benchmark_returns = benchmark_data['Adj Close'].pct_change().dropna()
-                            logger.debug(f"✅ Got benchmark data: {len(benchmark_returns)} returns")
-                    except Exception as e:
-                        logger.warning(f"Failed to get benchmark data: {e}")
-                    
-                    # Calculate portfolio metrics if we have data
-                    if portfolio_returns and len(portfolio_returns) > 0:
-                        # Align all return series to common dates
-                        common_dates = None
-                        
-                        for i, returns in enumerate(portfolio_returns):
-                            if common_dates is None:
-                                common_dates = returns.index
-                            else:
-                                common_dates = common_dates.intersection(returns.index)
-                        
-                        if len(common_dates) > 10:  # Need at least 10 data points
-                            # Calculate weighted portfolio returns
-                            portfolio_return_series = pd.Series(0.0, index=common_dates)
-                            
-                            for i, returns in enumerate(portfolio_returns):
-                                aligned_returns = returns.reindex(common_dates, fill_value=0)
-                                portfolio_return_series += aligned_returns * portfolio_weights[i]
-                            
-                            # Calculate performance metrics
-                            metrics = self._calculate_performance_metrics(
-                                portfolio_return_series, 
-                                benchmark_returns.reindex(common_dates, fill_value=0) if benchmark_returns is not None else None,
-                                period_days
-                            )
-                            
-                            # Calculate total returns
-                            total_return = (1 + portfolio_return_series).prod() - 1
-                            annualized_return = ((1 + total_return) ** (365 / period_days)) - 1
-                            
-                            benchmark_total_return = 0
-                            if benchmark_returns is not None:
-                                benchmark_aligned = benchmark_returns.reindex(common_dates, fill_value=0)
-                                benchmark_total_return = (1 + benchmark_aligned).prod() - 1
-                                benchmark_annualized = ((1 + benchmark_total_return) ** (365 / period_days)) - 1
-                            else:
-                                benchmark_annualized = 0
-                            
-                            performance_data.append({
-                                'timeframe': timeframe,
-                                'returns': total_return * 100,  # Convert to percentage
-                                'annualizedReturn': annualized_return * 100,
-                                'benchmarkReturns': benchmark_total_return * 100,
-                                'outperformance': (annualized_return - benchmark_annualized) * 100,
-                                'metrics': metrics
-                            })
-                            
-                            logger.info(f"✅ Calculated real metrics for {timeframe}: {annualized_return*100:.1f}% return")
-                        else:
-                            logger.warning(f"Insufficient data for {timeframe}: only {len(common_dates)} common dates")
-                    else:
-                        logger.warning(f"No portfolio data available for {timeframe}")
-                        
-                except Exception as e:
-                    logger.error(f"Failed to calculate metrics for {timeframe}: {e}")
-                    continue
-            
-            # If we couldn't calculate any real metrics, return empty list
-            if not performance_data:
-                logger.warning("⚠️ Could not calculate any real performance metrics")
-                return []
-            
-            logger.info(f"✅ Successfully calculated real performance metrics for {len(performance_data)} timeframes")
-            return performance_data
-            
-        except Exception as e:
-            logger.error(f"❌ Real performance calculation failed: {e}")
-            return []
-
-    def _calculate_performance_metrics(
-        self, 
-        portfolio_returns: pd.Series, 
-        benchmark_returns: pd.Series = None,
-        period_days: int = 365
-    ) -> Dict[str, float]:
-        """Calculate comprehensive performance metrics from return series"""
-        try:
-            import numpy as np
-            
-            # Risk-free rate (10-year Indian Government Bond yield - approximately 7%)
-            risk_free_rate = 0.07
-            
-            # Basic return metrics
-            mean_return = portfolio_returns.mean()
-            volatility = portfolio_returns.std() * np.sqrt(252)  # Annualized volatility
-            
-            # CAGR calculation
-            total_return = (1 + portfolio_returns).prod() - 1
-            years = period_days / 365
-            cagr = ((1 + total_return) ** (1 / years)) - 1 if years > 0 else 0
-            
-            # Sharpe Ratio
-            excess_return = mean_return - (risk_free_rate / 252)  # Daily risk-free rate
-            sharpe_ratio = (excess_return / portfolio_returns.std()) * np.sqrt(252) if portfolio_returns.std() > 0 else 0
-            
-            # Sortino Ratio (downside deviation)
-            downside_returns = portfolio_returns[portfolio_returns < 0]
-            downside_deviation = downside_returns.std() * np.sqrt(252) if len(downside_returns) > 0 else volatility
-            sortino_ratio = ((cagr - risk_free_rate) / downside_deviation) if downside_deviation > 0 else 0
-            
-            # Maximum Drawdown
-            cumulative_returns = (1 + portfolio_returns).cumprod()
-            rolling_max = cumulative_returns.expanding().max()
-            drawdowns = (cumulative_returns - rolling_max) / rolling_max
-            max_drawdown = drawdowns.min()
-            
-            # Beta and Alpha (if benchmark available)
-            beta = 1.0
-            alpha = 0.0
-            r_squared = 0.0
-            tracking_error = volatility
-            information_ratio = 0.0
-            
-            if benchmark_returns is not None and len(benchmark_returns) > 0:
-                # Align returns
-                aligned_portfolio = portfolio_returns.reindex(benchmark_returns.index, fill_value=0)
-                aligned_benchmark = benchmark_returns.reindex(portfolio_returns.index, fill_value=0)
-                
-                # Calculate beta
-                covariance = np.cov(aligned_portfolio, aligned_benchmark)[0, 1]
-                benchmark_variance = np.var(aligned_benchmark)
-                beta = covariance / benchmark_variance if benchmark_variance > 0 else 1.0
-                
-                # Calculate alpha
-                benchmark_mean = aligned_benchmark.mean()
-                alpha = (mean_return - (risk_free_rate / 252) - beta * (benchmark_mean - (risk_free_rate / 252))) * 252
-                
-                # R-squared
-                correlation = np.corrcoef(aligned_portfolio, aligned_benchmark)[0, 1]
-                r_squared = correlation ** 2 if not np.isnan(correlation) else 0.0
-                
-                # Tracking error
-                excess_returns = aligned_portfolio - aligned_benchmark
-                tracking_error = excess_returns.std() * np.sqrt(252)
-                
-                # Information ratio
-                information_ratio = (alpha / tracking_error) if tracking_error > 0 else 0.0
-            
-            # Calmar Ratio
-            calmar_ratio = abs(cagr / max_drawdown) if max_drawdown < 0 else 0.0
-            
-            return {
-                'cagr': cagr,
-                'alpha': alpha,
-                'beta': beta,
-                'rSquared': r_squared,
-                'sharpeRatio': sharpe_ratio,
-                'sortinoRatio': sortino_ratio,
-                'volatility': volatility,
-                'downsideDeviation': downside_deviation,
-                'maxDrawdown': max_drawdown,
-                'trackingError': tracking_error,
-                'informationRatio': information_ratio,
-                'calmarRatio': calmar_ratio
-            }
-            
-        except Exception as e:
-            logger.error(f"Failed to calculate performance metrics: {e}")
-            # Return safe defaults
-            return {
-                'cagr': 0.0,
-                'alpha': 0.0,
-                'beta': 1.0,
-                'rSquared': 0.0,
-                'sharpeRatio': 0.0,
-                'sortinoRatio': 0.0,
-                'volatility': 0.2,  # 20% default volatility
-                'downsideDeviation': 0.15,
-                'maxDrawdown': -0.1,  # -10% default
-                'trackingError': 0.1,
-                'informationRatio': 0.0,
-                'calmarRatio': 0.0
-            }
-
-    async def calculate_real_performance_metrics(
-        self, 
-        holdings: List[Any], 
-        timeframes: List[str] = ['1M', '3M', '1Y']
-    ) -> List[Dict[str, Any]]:
-        """
-        Calculate REAL performance metrics using historical data
-        No random generation - only actual calculations
-        """
-        try:
-            from datetime import datetime, timedelta
-            import yfinance as yf
-            import numpy as np
-            
-            logger.info(f"🔢 Calculating real performance metrics for {len(holdings)} holdings")
-            
-            performance_data = []
-            
-            for timeframe in timeframes:
-                # Calculate date range for timeframe
-                end_date = datetime.now()
-                if timeframe == '1M':
-                    start_date = end_date - timedelta(days=30)
-                    period_days = 30
-                elif timeframe == '3M':
-                    start_date = end_date - timedelta(days=90)
-                    period_days = 90
-                elif timeframe == '1Y':
-                    start_date = end_date - timedelta(days=365)
-                    period_days = 365
-                else:
-                    continue
-                
-                try:
-                    # Get historical data for all holdings
-                    portfolio_returns = []
-                    portfolio_weights = []
                     benchmark_data = None
                     
                     # Calculate total portfolio value for weights
@@ -1090,8 +832,17 @@ class IntelligenceService:
                             )
                             
                             if not ticker_data.empty and len(ticker_data) > 1:
-                                # Calculate returns for this stock
-                                stock_returns = ticker_data['Adj Close'].pct_change().dropna()
+                                # Log columns for debugging
+                                logger.info(f"Columns for {holding.ticker}: {ticker_data.columns.tolist()}")
+                                # Use 'Adj Close' if available, else fallback to 'Close'
+                                if 'Adj Close' in ticker_data.columns:
+                                    stock_returns = ticker_data['Adj Close'].pct_change().dropna()
+                                elif 'Close' in ticker_data.columns:
+                                    logger.warning(f"'Adj Close' missing for {holding.ticker}, using 'Close' instead.")
+                                    stock_returns = ticker_data['Close'].pct_change().dropna()
+                                else:
+                                    logger.error(f"Neither 'Adj Close' nor 'Close' found for {holding.ticker}.")
+                                    continue
                                 
                                 # Calculate weight in portfolio
                                 holding_value = holding.quantity * (holding.current_price or holding.avg_buy_price)
@@ -1112,10 +863,15 @@ class IntelligenceService:
                     try:
                         benchmark_data = yf.download("^NSEI", start=start_date, end=end_date, progress=False)
                         if not benchmark_data.empty:
-                            benchmark_returns = benchmark_data['Adj Close'].pct_change().dropna()
-                            logger.debug(f"✅ Got benchmark data: {len(benchmark_returns)} returns")
-                        else:
-                            benchmark_returns = None
+                            logger.info(f"Benchmark columns: {benchmark_data.columns.tolist()}")
+                            if 'Adj Close' in benchmark_data.columns:
+                                benchmark_returns = benchmark_data['Adj Close'].pct_change().dropna()
+                            elif 'Close' in benchmark_data.columns:
+                                logger.warning("'Adj Close' missing for benchmark, using 'Close' instead.")
+                                benchmark_returns = benchmark_data['Close'].pct_change().dropna()
+                            else:
+                                logger.error("Neither 'Adj Close' nor 'Close' found for benchmark.")
+                                benchmark_returns = None
                     except Exception as e:
                         logger.warning(f"Failed to get benchmark data: {e}")
                         benchmark_returns = None

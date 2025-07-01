@@ -94,6 +94,7 @@ class AnalysisFileSaver:
             # Create filename in the format expected by frontend
             filename = f"analysis_{analysis_id}.json"
             file_path = self.processed_dir / filename
+            logger.info(f"[SAVE] Saving analysis_id={analysis_id} to {file_path}")
             
             # Add metadata to the analysis data
             analysis_data_with_meta = {
@@ -183,6 +184,7 @@ class AnalysisFileSaver:
             Tuple of (success: bool, analysis_data: dict, error_message: str)
         """
         try:
+            logger.info(f"[LOAD] Attempting to load analysis_id={analysis_id}")
             # Try multiple filename patterns
             possible_filenames = [
                 f"analysis_{analysis_id}.json",
@@ -192,6 +194,7 @@ class AnalysisFileSaver:
             
             for filename in possible_filenames:
                 file_path = self.processed_dir / filename
+                logger.info(f"[LOAD] Checking file: {file_path}")
                 if file_path.exists():
                     with open(file_path, 'r', encoding='utf-8') as f:
                         data = json.load(f)
