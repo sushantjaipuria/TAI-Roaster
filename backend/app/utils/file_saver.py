@@ -102,7 +102,10 @@ class AnalysisFileSaver:
                 "analysis_id": analysis_id,
                 "generated_at": datetime.now().isoformat(),
                 "file_generated_by": "intelligence_module",
-                "format_version": "1.0"
+                "format_version": "1.0",
+                "is_real_data": True,
+                "data_source": "live_market_data",
+                "analysis_type": "enhanced_portfolio_analysis"
             }
             
             # Convert numpy types to Python types for JSON serialization

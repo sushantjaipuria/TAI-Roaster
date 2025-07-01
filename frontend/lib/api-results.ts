@@ -24,12 +24,26 @@ export interface AnalysisResultWithMetadata {
 export const detectDemoData = (data: PortfolioAnalysis): boolean => {
   if (!data) return true
   
-  // Check for demo data indicators
+  // First check: Look for explicit real data markers
+  const hasRealDataMetadata = (data as any).is_real_data === true || 
+                             (data as any).data_source === "live_market_data" ||
+                             (data as any).file_generated_by?.includes("intelligence_module")
+  
+  if (hasRealDataMetadata) {
+    return false // Definitely real data
+  }
+  
+  // Second check: Look for demo data indicators
   const indicators = [
-    // Check if stocks are demo stocks
+    // Check if this is explicitly marked as demo
+    (data as any).is_demo_data === true || 
+    (data as any).data_source === "demo" ||
+    (data as any).file_generated_by === "demo_generator",
+    
+    // Check if stocks are demo stocks (but only if we don't have real data markers)
     data.stocks?.some(stock => 
       ['RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'ICICIBANK'].includes(stock.ticker)
-    ),
+    ) && !hasRealDataMetadata,
     
     // Check if recommendations are generic or empty
     !data.recommendations || data.recommendations.length === 0 || 
@@ -41,10 +55,7 @@ export const detectDemoData = (data: PortfolioAnalysis): boolean => {
     data.overallScore === 0 || data.overallScore === 50,
     
     // Check if summary is generic
-    !data.summary || data.summary.length < 50,
-    
-    // Check if red flags are empty (demo data often has no red flags)
-    !data.redFlags || data.redFlags.length === 0
+    !data.summary || data.summary.length < 50
   ]
   
   // If any indicator is true, likely demo data

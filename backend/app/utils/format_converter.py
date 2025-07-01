@@ -60,6 +60,14 @@ def convert_enhanced_analysis_to_frontend_format(enhanced_response: Dict[str, An
         
         # Stocks conversion - check both 'stocks' and 'enhanced_stocks' keys
         stocks_data = enhanced_response.get('enhanced_stocks', enhanced_response.get('stocks', []))
+        
+        # Recalculate weights to ensure they're correct
+        total_value = sum(stock.get('current_value', 0) for stock in stocks_data)
+        if total_value > 0:
+            for stock in stocks_data:
+                stock_value = stock.get('current_value', 0)
+                stock['weight'] = (stock_value / total_value) * 100
+        
         stocks = convert_enhanced_stocks_data(stocks_data)
         
         # Hygiene conversion
@@ -94,7 +102,13 @@ def convert_enhanced_analysis_to_frontend_format(enhanced_response: Dict[str, An
             "actionPlan": action_plan,
             "recommendations": enhanced_response.get('recommendations', []),
             "riskWarnings": enhanced_response.get('risk_warnings', []),
-            "opportunities": enhanced_response.get('opportunities', [])
+            "opportunities": enhanced_response.get('opportunities', []),
+            
+            # Real data metadata markers
+            "is_real_data": True,
+            "data_source": "live_market_data",
+            "file_generated_by": "enhanced_intelligence_module",
+            "analysis_type": "enhanced_portfolio_analysis"
         }
         
         logger.info("✅ Successfully converted enhanced analysis to frontend format")

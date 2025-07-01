@@ -147,6 +147,7 @@ export interface StockAnalysisDetailed extends Omit<StockAnalysis, 'targetPrice'
   currentValue: number
   absoluteReturn: number
   absoluteReturnPct: number
+  weight: number // Portfolio weight percentage
   
   // Performance metrics
   performance: {

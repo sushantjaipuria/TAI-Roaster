@@ -376,10 +376,10 @@ async def analyze_portfolio(
                     "timestamp": datetime.now().isoformat()
                 })
                 
-                # Save to processed directory for frontend consumption
-                save_success, file_path, save_error = analysis_file_saver.save_demo_format_analysis(
+                # Save to processed directory for frontend consumption (REAL DATA)
+                save_success, file_path, save_error = analysis_file_saver.save_analysis_result(
                     frontend_format, 
-                    f"portfolio-analysis-{analysis_id[:8]}"
+                    analysis_id
                 )
                 
                 if save_success:

@@ -242,7 +242,7 @@ const StockInsightCard = ({ stock }: { stock: any }) => {
           </div>
           <div>
             <span className="text-gray-600">Investment:</span>
-            <span className="font-medium ml-2">₹{stock.investmentAmount?.toLocaleString('en-IN') || '0'}</span>
+            <span className="font-medium ml-2">₹{(stock.investmentAmount || 0).toLocaleString('en-IN')}</span>
           </div>
           <div>
             <span className="text-gray-600">Market Cap:</span>
@@ -491,7 +491,7 @@ const HoldingsSummaryCard = ({ data }: { data: any }) => {
               <div key={stock.ticker} className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
                 <div>
                   <div className="font-medium text-gray-900">{stock.ticker}</div>
-                  <div className="text-sm text-gray-600">₹{stock.investmentAmount.toLocaleString('en-IN')}</div>
+                  <div className="text-sm text-gray-600">₹{(stock.investmentAmount || 0).toLocaleString('en-IN')}</div>
                 </div>
                 <div className="text-right">
                   <div className="text-green-600 font-bold">+{stock.returnPct.toFixed(1)}%</div>
@@ -513,7 +513,7 @@ const HoldingsSummaryCard = ({ data }: { data: any }) => {
               <div key={stock.ticker} className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
                 <div>
                   <div className="font-medium text-gray-900">{stock.ticker}</div>
-                  <div className="text-sm text-gray-600">₹{stock.investmentAmount.toLocaleString('en-IN')}</div>
+                  <div className="text-sm text-gray-600">₹{(stock.investmentAmount || 0).toLocaleString('en-IN')}</div>
                 </div>
                 <div className="text-right">
                   <div className="text-red-600 font-bold">{stock.returnPct.toFixed(1)}%</div>

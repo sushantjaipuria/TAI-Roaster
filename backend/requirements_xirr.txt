@@ -1,0 +1,50 @@
+# XIRR Performance Calculator Dependencies
+# Install with: pip install -r requirements_xirr.txt
+
+# Core scientific computing
+scipy>=1.10.0        # For Newton-Raphson optimization in XIRR calculation
+numpy>=1.24.0        # Numerical operations and array handling
+pandas>=2.0.0        # Data manipulation and time series analysis
+
+# Market data fetching
+yfinance>=0.2.18     # Yahoo Finance API for stock prices and NIFTY50 data
+
+# Async HTTP requests (if needed for alternative data sources)
+aiohttp>=3.8.0       # Async HTTP client for market data APIs
+httpx>=0.24.0        # Modern async HTTP client
+
+# Date and time handling
+python-dateutil>=2.8.2  # Enhanced date parsing and manipulation
+
+# Data validation and serialization
+pydantic>=2.0.0      # Data validation for API models
+
+# Caching and performance
+redis>=4.5.0         # Optional: Redis for advanced caching
+python-memcached>=1.62  # Optional: Memcached for caching
+
+# Logging and monitoring
+structlog>=23.1.0    # Structured logging for better debugging
+
+# Testing dependencies
+pytest>=7.3.0        # Testing framework
+pytest-asyncio>=0.21.0  # Async testing support
+pytest-mock>=3.10.0  # Mocking for tests
+
+# Development dependencies
+black>=23.3.0        # Code formatting
+flake8>=6.0.0        # Code linting
+mypy>=1.3.0          # Type checking
+
+# Optional: Database drivers (if storing historical data)
+# SQLAlchemy>=2.0.0  # ORM for database operations
+# asyncpg>=0.28.0    # Async PostgreSQL driver
+# aiomysql>=0.2.0    # Async MySQL driver
+
+# Optional: Advanced numerical libraries
+# quantlib>=1.31     # Quantitative finance library
+# statsmodels>=0.14  # Statistical modeling
+
+# Production dependencies
+gunicorn>=20.1.0     # WSGI HTTP Server
+uvicorn>=0.22.0      # ASGI server for FastAPI 
