@@ -22,6 +22,10 @@ import ActionPlan from '../results/ActionPlan'
 import RecommendationsPanel from '../results/RecommendationsPanel'
 import EnhancedStockInsights from '../results/EnhancedStockInsights'
 import StockInsightCards from '../results/StockInsightCards'
+import PortfolioSummaryCard from '../results/PortfolioSummaryCard'
+import FundamentalInsights from '../results/FundamentalInsights'
+import InsightsAndRisksSection from '../results/InsightsAndRisksSection'
+import { RiskAnalysisPanel } from './RiskAnalysisPanel'
 import { MLPredictionsChart } from './MLPredictionsChart'
 import PortfolioGraphs from './PortfolioGraphs'
 
@@ -266,6 +270,38 @@ export default function EnhancedDashboard({ data }: EnhancedDashboardProps) {
     }
   ]
 
+  // Check if this is likely demo data
+  const isDemoData = () => {
+    if (!data) return true
+    
+    // Check for demo data indicators
+    const indicators = [
+      // Check if stocks are demo stocks
+      data.stocks?.some((stock: any) => 
+        ['RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'ICICIBANK'].includes(stock.ticker)
+      ),
+      
+      // Check if recommendations are generic or empty
+      !data.recommendations || data.recommendations.length === 0 || 
+      data.recommendations.every((rec: string) => 
+        rec.includes('diversify') || rec.includes('consider') || rec.includes('review')
+      ),
+      
+      // Check if overall score is default (0 or 50)
+      data.overallScore === 0 || data.overallScore === 50,
+      
+      // Check if summary is generic
+      !data.summary || data.summary.length < 50,
+      
+      // Check if red flags are empty (demo data often has no red flags)
+      !data.redFlags || data.redFlags.length === 0
+    ]
+    
+    return indicators.some(indicator => indicator === true)
+  }
+
+  const demoDataWarning = isDemoData()
+
   const renderTabContent = () => {
     switch (activeTab) {
       case 'overview':
@@ -359,20 +395,15 @@ export default function EnhancedDashboard({ data }: EnhancedDashboardProps) {
 
   if (error) {
     return (
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
-            <AlertTriangle className="w-5 h-5 text-red-600" />
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto">
+          <div className="bg-red-100 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+            <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.268 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
           </div>
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">Analysis Error</h2>
-            <p className="text-gray-600">{error}</p>
-          </div>
-        </div>
-        <div className="mt-4 p-4 bg-red-50 rounded-lg">
-          <p className="text-sm text-red-700">
-            Please try refreshing the page or contact support if the problem persists.
-          </p>
+          <h1 className="text-2xl font-bold text-red-600 mb-4">Analysis Error</h1>
+          <p className="text-gray-600">{error}</p>
         </div>
       </div>
     )
@@ -380,41 +411,135 @@ export default function EnhancedDashboard({ data }: EnhancedDashboardProps) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Enhanced Status Banner */}
-      <EnhancedStatusBanner data={data} />
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 py-6">
+          <div className="flex justify-between items-start">
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl font-bold text-gray-900">
+                  Portfolio Analysis Dashboard
+                </h1>
+                {demoDataWarning && (
+                  <div className="flex items-center gap-1 px-2 py-1 bg-yellow-100 rounded-lg">
+                    <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                    <span className="text-xs font-medium text-yellow-800">Demo Data</span>
+                  </div>
+                )}
+              </div>
+              <p className="text-gray-600">
+                AI-powered insights and real-time portfolio analysis
+              </p>
+            </div>
+            
+            {/* Real-time indicator */}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 px-3 py-1 bg-green-100 rounded-lg">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                <span className="text-sm font-medium text-green-800">Live</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
-      {/* Tabs */}
-      <div className="bg-white rounded-xl border border-gray-200">
-        <div className="border-b border-gray-200">
-          <nav className="flex -mb-px" aria-label="Tabs">
+      {/* Demo Data Notice */}
+      {demoDataWarning && (
+        <div className="bg-yellow-50 border-b border-yellow-200">
+          <div className="max-w-7xl mx-auto px-4 py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <svg className="w-5 h-5 text-yellow-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.268 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+                <div>
+                  <h3 className="text-sm font-medium text-yellow-800">
+                    Demo Data Mode
+                  </h3>
+                  <p className="text-sm text-yellow-700">
+                    This analysis is using sample data. For real portfolio analysis, please upload your actual portfolio data.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        {/* Tab Navigation */}
+        <div className="mb-8">
+          <nav className="flex space-x-8">
             {tabs.map((tab) => {
               const Icon = tab.icon
-              const isActive = activeTab === tab.id
               return (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`
-                    w-full py-4 px-1 text-center border-b-2 font-medium text-sm
-                    ${isActive
-                      ? 'border-indigo-500 text-indigo-600'
+                  className={`flex items-center space-x-2 py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
+                    activeTab === tab.id
+                      ? 'border-blue-500 text-blue-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                    }
-                  `}
+                  }`}
                 >
-                  <div className="flex flex-col items-center gap-1">
-                    <Icon className="w-5 h-5" />
-                    <span>{tab.name}</span>
-                  </div>
+                  <Icon className="w-4 h-4" />
+                  <span>{tab.name}</span>
                 </button>
               )
             })}
           </nav>
         </div>
 
-        {/* Tab Panels */}
-        <div className="p-6">
-          {renderTabContent()}
+        {/* Tab Content */}
+        <div className="space-y-8">
+          {activeTab === 'overview' && (
+            <div className="space-y-8">
+              <PortfolioSummaryCard data={data} />
+              <AllocationDashboard data={data} />
+              <StockInsightCards data={data} />
+            </div>
+          )}
+          
+          {activeTab === 'enhanced' && (
+            <div className="space-y-8">
+              <EnhancedStockInsights data={data} />
+              <FundamentalInsights data={data} />
+              <InsightsAndRisksSection data={data} />
+            </div>
+          )}
+          
+          {activeTab === 'performance' && (
+            <div className="space-y-8">
+              <PerformanceMetrics data={data} />
+              <MLPredictionsChart predictions={data.ml_predictions || []} />
+            </div>
+          )}
+          
+          {activeTab === 'graphs' && (
+            <div className="space-y-8">
+              <PortfolioGraphs data={data} />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="bg-white border-t border-gray-200 mt-16">
+        <div className="max-w-7xl mx-auto px-4 py-6">
+          <div className="flex justify-between items-center">
+            <div className="text-sm text-gray-500">
+              Analysis generated on {new Date().toLocaleDateString()}
+            </div>
+            <div className="flex items-center space-x-4">
+              <button className="text-sm text-gray-500 hover:text-gray-700">
+                Export PDF
+              </button>
+              <button className="text-sm text-gray-500 hover:text-gray-700">
+                Share Analysis
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

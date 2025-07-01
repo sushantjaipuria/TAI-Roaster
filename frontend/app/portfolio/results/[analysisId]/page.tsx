@@ -3,7 +3,8 @@
 import React, { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { PortfolioAnalysisDetailed } from '../../../../lib/types-results'
-import { getAnalysisResults } from '../../../../lib/api-results'
+import { getAnalysisResultsWithMetadata, AnalysisResultWithMetadata } from '../../../../lib/api-results'
+import { AlertTriangle, RefreshCw, Info } from 'lucide-react'
 
 // Enhanced dashboard component
 import EnhancedDashboard from '../../../../components/analysis/EnhancedDashboard'
@@ -12,38 +13,51 @@ export default function PortfolioResultsPage() {
   const params = useParams()
   const analysisId = params.analysisId as string
   
-  const [analysisData, setAnalysisData] = useState<PortfolioAnalysisDetailed | null>(null)
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResultWithMetadata | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [retrying, setRetrying] = useState(false)
+
+  const fetchResults = async (isRetry: boolean = false) => {
+    try {
+      if (isRetry) {
+        setRetrying(true)
+      } else {
+        setLoading(true)
+      }
+      setError(null)
+      
+      const result = await getAnalysisResultsWithMetadata(analysisId)
+      
+      if (!result.data) {
+        throw new Error('No analysis data received from API')
+      }
+      
+      // Cast to detailed type and use directly
+      const results = result.data as PortfolioAnalysisDetailed
+      console.log('📊 Analysis Results:', results) // Debug log
+      console.log('🔍 Demo Data Detection:', result.isDemoData) // Debug log
+      
+      setAnalysisResult(result)
+      
+    } catch (err) {
+      console.error('Error fetching results:', err)
+      setError(err instanceof Error ? err.message : 'Unknown error occurred')
+    } finally {
+      setLoading(false)
+      setRetrying(false)
+    }
+  }
 
   useEffect(() => {
-    const fetchResults = async () => {
-      try {
-        setLoading(true)
-        
-        const basicResults = await getAnalysisResults(analysisId)
-        
-        if (!basicResults) {
-          throw new Error('No analysis data received from API')
-        }
-        
-        // Cast to detailed type and use directly
-        const results = basicResults as PortfolioAnalysisDetailed
-        console.log('📊 Analysis Results:', results) // Debug log
-        setAnalysisData(results)
-        
-      } catch (err) {
-        console.error('Error fetching results:', err)
-        setError(err instanceof Error ? err.message : 'Unknown error occurred')
-      } finally {
-        setLoading(false)
-      }
-    }
-
     if (analysisId) {
       fetchResults()
     }
   }, [analysisId])
+
+  const handleRetry = () => {
+    fetchResults(true)
+  }
 
   if (loading) {
     return (
@@ -68,18 +82,37 @@ export default function PortfolioResultsPage() {
           </div>
           <h1 className="text-2xl font-bold text-red-600 mb-4">Analysis Loading Error</h1>
           <p className="text-gray-600 mb-4">{error}</p>
-          <button 
-            onClick={() => window.location.reload()} 
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-          >
-            Try Again
-          </button>
+          <div className="space-y-3">
+            <button 
+              onClick={handleRetry}
+              disabled={retrying}
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center mx-auto"
+            >
+              {retrying ? (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  Retrying...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Retry Analysis
+                </>
+              )}
+            </button>
+            <button 
+              onClick={() => window.location.reload()} 
+              className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium"
+            >
+              Reload Page
+            </button>
+          </div>
         </div>
       </div>
     )
   }
 
-  if (!analysisData) {
+  if (!analysisResult) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center max-w-md mx-auto">
@@ -96,5 +129,64 @@ export default function PortfolioResultsPage() {
     )
   }
 
-  return <EnhancedDashboard data={analysisData} />
+  return (
+    <div>
+      {/* Demo Data Warning Banner */}
+      {analysisResult.isDemoData && (
+        <div className="bg-yellow-50 border-b border-yellow-200">
+          <div className="max-w-7xl mx-auto px-4 py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <AlertTriangle className="w-5 h-5 text-yellow-600 mr-2" />
+                <div>
+                  <h3 className="text-sm font-medium text-yellow-800">
+                    Demo Data Warning
+                  </h3>
+                  <p className="text-sm text-yellow-700">
+                    This analysis is using demo/fallback data. Real market data may not be available.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-3">
+                <button
+                  onClick={handleRetry}
+                  disabled={retrying}
+                  className="inline-flex items-center px-3 py-1.5 border border-yellow-300 text-xs font-medium rounded text-yellow-700 bg-yellow-100 hover:bg-yellow-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {retrying ? (
+                    <>
+                      <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
+                      Retrying...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-3 h-3 mr-1" />
+                      Retry with Real Data
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => {
+                    // Hide the warning for this session
+                    const warning = document.querySelector('.bg-yellow-50') as HTMLElement
+                    if (warning) {
+                      warning.style.display = 'none'
+                    }
+                  }}
+                  className="text-yellow-600 hover:text-yellow-800"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Main Dashboard */}
+      <EnhancedDashboard data={analysisResult.data} />
+    </div>
+  )
 } 

@@ -8,22 +8,93 @@ import { PortfolioAnalysisDetailed, PDFExportOptions } from './types-results'
 import { PortfolioApiClient } from './api'
 
 // =============================================================================
+// DEMO DATA DETECTION
+// =============================================================================
+
+export interface AnalysisResultWithMetadata {
+  data: PortfolioAnalysis
+  isDemoData: boolean
+  error?: string
+  retryCount?: number
+}
+
+/**
+ * Detect if analysis data is demo/fallback data
+ */
+export const detectDemoData = (data: PortfolioAnalysis): boolean => {
+  if (!data) return true
+  
+  // Check for demo data indicators
+  const indicators = [
+    // Check if stocks are demo stocks
+    data.stocks?.some(stock => 
+      ['RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'ICICIBANK'].includes(stock.ticker)
+    ),
+    
+    // Check if recommendations are generic or empty
+    !data.recommendations || data.recommendations.length === 0 || 
+    data.recommendations.every(rec => 
+      rec.includes('diversify') || rec.includes('consider') || rec.includes('review')
+    ),
+    
+    // Check if overall score is default (0 or 50)
+    data.overallScore === 0 || data.overallScore === 50,
+    
+    // Check if summary is generic
+    !data.summary || data.summary.length < 50,
+    
+    // Check if red flags are empty (demo data often has no red flags)
+    !data.redFlags || data.redFlags.length === 0
+  ]
+  
+  // If any indicator is true, likely demo data
+  return indicators.some(indicator => indicator === true)
+}
+
+// =============================================================================
 // ANALYSIS RESULTS API
 // =============================================================================
 
 export class ResultsApiClient {
   
   /**
-   * Get analysis results by analysis ID
+   * Get analysis results by analysis ID with retry logic and demo detection
    */
-  static async getAnalysisResults(analysisId: string): Promise<PortfolioAnalysis> {
-    try {
-      // Use existing API client method
-      const response = await PortfolioApiClient.getAnalysisResults(analysisId)
-      return response
-    } catch (error: any) {
-      throw new Error(`Failed to fetch analysis results: ${error.message}`)
+  static async getAnalysisResults(
+    analysisId: string, 
+    maxRetries: number = 3
+  ): Promise<AnalysisResultWithMetadata> {
+    let lastError: string | undefined
+    let retryCount = 0
+    
+    while (retryCount < maxRetries) {
+      try {
+        // Use existing API client method
+        const response = await PortfolioApiClient.getAnalysisResults(analysisId)
+        
+        // Detect if this is demo data
+        const isDemoData = detectDemoData(response)
+        
+        return {
+          data: response,
+          isDemoData,
+          retryCount
+        }
+        
+      } catch (error: any) {
+        lastError = error.message
+        retryCount++
+        
+        // Wait before retrying (exponential backoff)
+        if (retryCount < maxRetries) {
+          const delay = Math.min(1000 * Math.pow(2, retryCount - 1), 5000)
+          await new Promise(resolve => setTimeout(resolve, delay))
+        }
+      }
     }
+    
+    // If all retries failed, throw error
+    throw new Error(`Failed to fetch analysis results after ${maxRetries} attempts: ${lastError}`)
   }
   
   /**
@@ -100,6 +171,14 @@ export class ResultsApiClient {
  * Get analysis results with enhanced data
  */
 export const getAnalysisResults = async (analysisId: string): Promise<PortfolioAnalysis> => {
+  const result = await ResultsApiClient.getAnalysisResults(analysisId)
+  return result.data
+}
+
+/**
+ * Get analysis results with metadata (including demo detection)
+ */
+export const getAnalysisResultsWithMetadata = async (analysisId: string): Promise<AnalysisResultWithMetadata> => {
   return ResultsApiClient.getAnalysisResults(analysisId)
 }
 
