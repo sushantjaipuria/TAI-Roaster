@@ -774,6 +774,39 @@ class IntelligenceService:
             logger.error(f"Failed to calculate portfolio enhanced metrics: {e}")
             return {}
 
+    def _get_price_column(self, dataframe: pd.DataFrame, column_name: str, ticker: str) -> tuple[bool, Any]:
+        """
+        Helper function to get the appropriate price column from yfinance data,
+        handling both simple and MultiIndex column structures.
+        
+        Args:
+            dataframe: The yfinance DataFrame
+            column_name: 'Close' (price column name)
+            ticker: The ticker symbol for MultiIndex columns
+        
+        Returns:
+            tuple: (found, column_reference)
+            - found: Boolean indicating if column was found
+            - column_reference: The actual column key to use for data access
+        """
+        if dataframe.empty:
+            return False, None
+            
+        # Check if columns are MultiIndex (tuples) by examining first column
+        if len(dataframe.columns) > 0 and isinstance(dataframe.columns[0], tuple):
+            # MultiIndex columns: look for (column_name, ticker)
+            target_column = (column_name, ticker)
+            if target_column in dataframe.columns:
+                return True, target_column
+            else:
+                return False, None
+        else:
+            # Simple columns: look for column_name directly
+            if column_name in dataframe.columns:
+                return True, column_name
+            else:
+                return False, None
+
     async def calculate_real_performance_metrics(
         self, 
         holdings: List[Any], 
@@ -823,9 +856,10 @@ class IntelligenceService:
                     # Get historical data for each holding
                     for holding in holdings:
                         try:
-                            # Fetch historical data
+                            # Fetch historical data - ensure .NS suffix for yFinance
+                            yf_ticker = holding.ticker if holding.ticker.endswith('.NS') else f"{holding.ticker}.NS"
                             ticker_data = yf.download(
-                                f"{holding.ticker}.NS", 
+                                yf_ticker, 
                                 start=start_date, 
                                 end=end_date,
                                 progress=False
@@ -834,14 +868,14 @@ class IntelligenceService:
                             if not ticker_data.empty and len(ticker_data) > 1:
                                 # Log columns for debugging
                                 logger.info(f"Columns for {holding.ticker}: {ticker_data.columns.tolist()}")
-                                # Use 'Adj Close' if available, else fallback to 'Close'
-                                if 'Adj Close' in ticker_data.columns:
-                                    stock_returns = ticker_data['Adj Close'].pct_change().dropna()
-                                elif 'Close' in ticker_data.columns:
-                                    logger.warning(f"'Adj Close' missing for {holding.ticker}, using 'Close' instead.")
-                                    stock_returns = ticker_data['Close'].pct_change().dropna()
+                                
+                                # Use helper function to find Close
+                                close_found, close_col = self._get_price_column(ticker_data, 'Close', yf_ticker)
+                                
+                                if close_found:
+                                    stock_returns = ticker_data[close_col].pct_change().dropna()
                                 else:
-                                    logger.error(f"Neither 'Adj Close' nor 'Close' found for {holding.ticker}.")
+                                    logger.error(f"'Close' column not found for {holding.ticker}.")
                                     continue
                                 
                                 # Calculate weight in portfolio
@@ -864,13 +898,14 @@ class IntelligenceService:
                         benchmark_data = yf.download("^NSEI", start=start_date, end=end_date, progress=False)
                         if not benchmark_data.empty:
                             logger.info(f"Benchmark columns: {benchmark_data.columns.tolist()}")
-                            if 'Adj Close' in benchmark_data.columns:
-                                benchmark_returns = benchmark_data['Adj Close'].pct_change().dropna()
-                            elif 'Close' in benchmark_data.columns:
-                                logger.warning("'Adj Close' missing for benchmark, using 'Close' instead.")
-                                benchmark_returns = benchmark_data['Close'].pct_change().dropna()
+                            
+                            # Use helper function to find Close for benchmark
+                            close_found, close_col = self._get_price_column(benchmark_data, 'Close', "^NSEI")
+                            
+                            if close_found:
+                                benchmark_returns = benchmark_data[close_col].pct_change().dropna()
                             else:
-                                logger.error("Neither 'Adj Close' nor 'Close' found for benchmark.")
+                                logger.error("'Close' column not found for benchmark.")
                                 benchmark_returns = None
                     except Exception as e:
                         logger.warning(f"Failed to get benchmark data: {e}")

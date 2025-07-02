@@ -352,7 +352,8 @@ const CompletePortfolioForm: React.FC<CompletePortfolioFormProps> = ({ className
     } catch (error) {
       // Clear progress simulation on error
       clearInterval(progressInterval)
-      setSubmitError(error instanceof Error ? error.message : 'An error occurred')
+      const errorMessage = error instanceof Error ? error.message : 'An error occurred'
+      setSubmitError(errorMessage)
       setAnalysisState(prev => ({ ...prev, isAnalyzing: false }))
     } finally {
       setIsSubmitting(false)

@@ -178,7 +178,7 @@ class AnalysisFileSaver:
     
     def get_analysis_by_id(self, analysis_id: str) -> Tuple[bool, Dict[str, Any], str]:
         """
-        Retrieve analysis result by ID
+        Retrieve analysis result by ID with enhanced error logging
         
         Args:
             analysis_id: The analysis ID to retrieve
@@ -188,25 +188,44 @@ class AnalysisFileSaver:
         """
         try:
             logger.info(f"[LOAD] Attempting to load analysis_id={analysis_id}")
+            logger.info(f"[LOAD] Search directory: {self.processed_dir}")
+            logger.info(f"[LOAD] Directory exists: {self.processed_dir.exists()}")
+            
+            # List all analysis files for debugging
+            all_analysis_files = list(self.processed_dir.glob("analysis_*.json"))
+            logger.info(f"[LOAD] Found {len(all_analysis_files)} analysis files: {[f.name for f in all_analysis_files]}")
+            
             # Try multiple filename patterns
             possible_filenames = [
                 f"analysis_{analysis_id}.json",
-                f"analysis_demo-{analysis_id}.json",
+                f"analysis_demo-{analysis_id}.json", 
                 f"analysis_{analysis_id}-analysis.json"
             ]
             
             for filename in possible_filenames:
                 file_path = self.processed_dir / filename
                 logger.info(f"[LOAD] Checking file: {file_path}")
+                logger.info(f"[LOAD] File exists: {file_path.exists()}")
+                
                 if file_path.exists():
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                    
-                    logger.info(f"✅ Retrieved analysis from: {file_path}")
-                    return True, data, ""
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                        
+                        logger.info(f"✅ Retrieved analysis from: {file_path}")
+                        logger.info(f"✅ Analysis data keys: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}")
+                        return True, data, ""
+                        
+                    except json.JSONDecodeError as je:
+                        logger.error(f"❌ Invalid JSON in {file_path}: {je}")
+                        continue
+                    except Exception as fe:
+                        logger.error(f"❌ Error reading {file_path}: {fe}")
+                        continue
             
-            error_msg = f"Analysis file not found for ID: {analysis_id}"
+            error_msg = f"Analysis file not found for ID: {analysis_id}. Tried patterns: {possible_filenames}"
             logger.warning(f"⚠️ {error_msg}")
+            logger.warning(f"⚠️ Available files: {[f.name for f in all_analysis_files]}")
             return False, {}, error_msg
             
         except Exception as e:

@@ -147,47 +147,41 @@ def save_analysis_results(analysis_id: str, analysis_data: Dict[str, Any]) -> Tu
 
 
 def load_analysis_by_id(analysis_id: str) -> Dict[str, Any]:
-    """Load analysis data by ID with improved error handling"""
+    """Load analysis data by ID with improved error handling and consistent path resolution"""
     try:
-        # Strategy 1: Try to load using the full analysis_id as-is
+        logger.info(f"🔍 Loading analysis for ID: {analysis_id}")
+        
+        # Primary strategy: Use the dedicated file saver (consistent with how files are saved)
         success, analysis_data, error = analysis_file_saver.get_analysis_by_id(analysis_id)
         if success:
+            logger.info(f"✅ Successfully loaded analysis {analysis_id} via file saver")
             return analysis_data
+        else:
+            logger.warning(f"⚠️ File saver could not find analysis {analysis_id}: {error}")
         
-        # Strategy 2: Try with truncated UUID (first 8 characters)
+        # Fallback strategy: Try alternative patterns using the same file saver directory
+        logger.info(f"🔄 Trying fallback patterns for analysis {analysis_id}")
+        
+        # Get directory info from file saver for consistent path resolution
+        dir_info = analysis_file_saver.get_processed_directory_info()
+        logger.info(f"📁 Processed directory: {dir_info.get('directory_path', 'unknown')}")
+        logger.info(f"📂 Available files: {dir_info.get('files', [])}")
+        
+        # Try with truncated UUID (first 8 characters) via file saver
         truncated_id = analysis_id[:8]
-        
-        # Try different file patterns
-        file_patterns = [
-            f"analysis_{analysis_id}.json",
-            f"analysis_demo-{analysis_id}.json",
-            f"analysis_{analysis_id}-analysis.json",
-            f"portfolio-analysis-{truncated_id}.json",
-            f"demo-portfolio-analysis-{truncated_id}.json",
-            f"{truncated_id}.json"
-        ]
-        
-        processed_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "processed")
-        
-        for pattern in file_patterns:
-            file_path = os.path.join(processed_dir, pattern)
-            if os.path.exists(file_path):
-                try:
-                    with open(file_path, 'r') as f:
-                        return json.load(f)
-                except json.JSONDecodeError as je:
-                    logger.error(f"❌ Invalid JSON in {file_path}: {je}")
-                    continue
-                except Exception as e:
-                    logger.error(f"❌ Error reading {file_path}: {e}")
-                    continue
+        truncated_success, truncated_data, truncated_error = analysis_file_saver.get_analysis_by_id(truncated_id)
+        if truncated_success:
+            logger.info(f"✅ Successfully loaded analysis {analysis_id} via truncated ID {truncated_id}")
+            return truncated_data
         
         # If no file found, load demo data
-        logger.warning(f"No analysis found for ID {analysis_id}, falling back to demo data")
+        logger.warning(f"❌ No analysis found for ID {analysis_id} (tried full ID and truncated ID)")
+        logger.info(f"🎭 Falling back to demo data for analysis {analysis_id}")
         return load_demo_analysis()
         
     except Exception as e:
         logger.error(f"❌ Error loading analysis {analysis_id}: {e}")
+        logger.info(f"🎭 Falling back to demo data due to exception: {analysis_id}")
         return load_demo_analysis()
 
 

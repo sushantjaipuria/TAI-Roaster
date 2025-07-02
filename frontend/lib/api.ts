@@ -46,6 +46,7 @@ import {
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 const API_TIMEOUT = 30000 // 30 seconds
 const UPLOAD_TIMEOUT = 120000 // 2 minutes for file uploads
+const ANALYSIS_TIMEOUT = 60000 // 60 seconds for portfolio analysis
 
 // Create axios instance
 const api: AxiosInstance = axios.create({
@@ -92,13 +93,20 @@ api.interceptors.response.use(
     return response
   },
   (error) => {
-    // Enhanced error logging
-    console.error('❌ API Error:', {
+    // Enhanced error logging for display
+    const errorInfo = {
       status: error.response?.status,
       message: error.response?.data?.message || error.message,
       url: error.config?.url,
-      method: error.config?.method
-    })
+      method: error.config?.method,
+      timestamp: new Date().toISOString(),
+      errorType: error?.constructor?.name || 'Unknown',
+      hasResponse: !!error?.response,
+      hasConfig: !!error?.config,
+      hasRequest: !!error?.request
+    }
+    
+    console.error('❌ API Error:', errorInfo)
     
     // Handle specific error cases
     if (error.response?.status === 401) {
@@ -306,13 +314,16 @@ export class PortfolioApiClient {
         true
       )
       
-      const response = await api.post('/api/portfolio/analyze', apiRequest)
+      const response = await api.post('/api/portfolio/analyze', apiRequest, {
+        timeout: ANALYSIS_TIMEOUT
+      })
       
       if (response.data.success) {
-        return {
+        const result = {
           analysisId: response.data.analysisId,
           estimatedProcessingTime: response.data.data?.estimatedProcessingTime || '2-3 minutes'
         }
+        return result
       } else {
         throw new Error(response.data.message || 'Analysis request failed')
       }
