@@ -202,18 +202,21 @@ export default function PortfolioPerformanceChart({ portfolioData }: PortfolioPe
           // Fix chart values to be more realistic
           const monthsElapsed = index + 1
           const portfolioReturn = point.portfolio_return || currentMetrics.returns
-          const benchmarkReturn = point.benchmark_return || currentMetrics.benchmarkReturns
+          // Only use XIRR data, no fallback to CAGR
+          const benchmarkReturn = point.benchmark_xirr_return || currentMetrics.benchmarkXIRR
           
           // DEBUG: Log chart data point processing
           if (index === 0) {
-            console.log('[DEBUG-XIRR] Chart Data Point Processing (V4 - Optimized Real XIRR):', {
+            console.log('[DEBUG-XIRR] Chart Data Point Processing (V4 - Optimized XIRR vs XIRR):', {
               originalPortfolioReturn: point.portfolio_return,
               fallbackReturn: currentMetrics.returns,
               finalPortfolioReturn: portfolioReturn,
-              originalBenchmarkReturn: point.benchmark_return,
-              fallbackBenchmarkReturn: currentMetrics.benchmarkReturns,
+              originalBenchmarkXIRR: point.benchmark_xirr_return,
+              originalBenchmarkCAGR: point.benchmark_return,
+              fallbackBenchmarkXIRR: currentMetrics.benchmarkXIRR,
+              fallbackBenchmarkCAGR: currentMetrics.benchmarkReturns,
               finalBenchmarkReturn: benchmarkReturn,
-              calculationMethod: 'Real historical XIRR for each time point (V4)'
+              calculationMethod: 'Portfolio XIRR vs Benchmark XIRR (Apples-to-Apples)'
             })
           }
           
@@ -229,8 +232,8 @@ export default function PortfolioPerformanceChart({ portfolioData }: PortfolioPe
 
         const performanceMetrics: PerformanceMetrics = {
           portfolioXIRR: currentMetrics.returns,
-          benchmarkXIRR: currentMetrics.benchmarkReturns,
-          outperformance: currentMetrics.outperformance,
+          benchmarkXIRR: currentMetrics.benchmarkXIRR, // Only use XIRR, no fallback to CAGR
+          outperformance: currentMetrics.outperformanceXIRR, // Only use XIRR-based outperformance
           alpha: currentMetrics.metrics.alpha,
           beta: currentMetrics.metrics.beta,
           sharpeRatio: currentMetrics.metrics.sharpeRatio,
@@ -364,32 +367,48 @@ export default function PortfolioPerformanceChart({ portfolioData }: PortfolioPe
           </div>
           
           <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-            <div className="text-gray-600 text-sm font-medium mb-1">NIFTY 50 CAGR</div>
+            <div className="text-gray-600 text-sm font-medium mb-1">NIFTY 50 XIRR</div>
             <div className="text-gray-900 text-3xl font-bold">
-              {metrics.benchmarkXIRR.toFixed(1)}%
+              {metrics.benchmarkXIRR !== null && metrics.benchmarkXIRR !== undefined ? 
+                `${metrics.benchmarkXIRR.toFixed(1)}%` : 
+                'N/A'}
             </div>
-            <div className="text-gray-700 text-xs mt-1">Benchmark returns</div>
+            <div className="text-gray-700 text-xs mt-1">
+              {metrics.benchmarkXIRR !== null && metrics.benchmarkXIRR !== undefined ? 
+                'Benchmark returns' : 
+                'XIRR calculation failed'}
+            </div>
           </div>
           
           <div className={`rounded-lg p-4 border ${
-            metrics.outperformance >= 0 
-              ? 'bg-green-50 border-green-200' 
-              : 'bg-red-50 border-red-200'
+            metrics.outperformance !== null && metrics.outperformance !== undefined 
+              ? (metrics.outperformance >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200')
+              : 'bg-yellow-50 border-yellow-200'
           }`}>
             <div className={`text-sm font-medium mb-1 ${
-              metrics.outperformance >= 0 ? 'text-green-600' : 'text-red-600'
+              metrics.outperformance !== null && metrics.outperformance !== undefined
+                ? (metrics.outperformance >= 0 ? 'text-green-600' : 'text-red-600')
+                : 'text-yellow-600'
             }`}>
               Outperformance
             </div>
             <div className={`text-3xl font-bold ${
-              metrics.outperformance >= 0 ? 'text-green-900' : 'text-red-900'
+              metrics.outperformance !== null && metrics.outperformance !== undefined
+                ? (metrics.outperformance >= 0 ? 'text-green-900' : 'text-red-900')
+                : 'text-yellow-900'
             }`}>
-              {metrics.outperformance >= 0 ? '+' : ''}{metrics.outperformance.toFixed(1)}%
+              {metrics.outperformance !== null && metrics.outperformance !== undefined 
+                ? `${metrics.outperformance >= 0 ? '+' : ''}${metrics.outperformance.toFixed(1)}%`
+                : 'N/A'}
             </div>
             <div className={`text-xs mt-1 ${
-              metrics.outperformance >= 0 ? 'text-green-700' : 'text-red-700'
+              metrics.outperformance !== null && metrics.outperformance !== undefined
+                ? (metrics.outperformance >= 0 ? 'text-green-700' : 'text-red-700')
+                : 'text-yellow-700'
             }`}>
-              vs benchmark
+              {metrics.outperformance !== null && metrics.outperformance !== undefined 
+                ? 'vs benchmark' 
+                : 'XIRR calculation failed'}
             </div>
           </div>
           
@@ -425,8 +444,8 @@ export default function PortfolioPerformanceChart({ portfolioData }: PortfolioPe
                 formatter={(value: number, name: string) => {
                   if (name === 'Annualised Returns or XIRR') {
                     return [`${value.toFixed(2)}%`, 'Portfolio XIRR']
-                  } else if (name === 'NIFTY50') {
-                    return [`${value.toFixed(2)}%`, 'NIFTY 50 CAGR']
+                  } else if (name === 'NIFTY 50 XIRR') {
+                    return [`${value.toFixed(2)}%`, 'NIFTY 50 XIRR']
                   }
                   return [`${value.toFixed(2)}%`, name]
                 }}
@@ -455,7 +474,7 @@ export default function PortfolioPerformanceChart({ portfolioData }: PortfolioPe
                 strokeDasharray="8 4"
                 dot={{ fill: '#1F2937', strokeWidth: 1, r: 2 }}
                 activeDot={{ r: 4, stroke: '#1F2937', strokeWidth: 2 }}
-                name="NIFTY50"
+                name="NIFTY 50 XIRR"
               />
               <Legend />
             </LineChart>
@@ -510,23 +529,32 @@ export default function PortfolioPerformanceChart({ portfolioData }: PortfolioPe
           <div>
             <h3 className="text-lg font-semibold text-gray-900 mb-3">Performance Insights</h3>
             <div className="space-y-2 text-sm">
-              {metrics.outperformance > 2 && (
-                <div className="p-3 bg-green-50 border-l-4 border-green-500 rounded">
-                  <p className="text-green-800 font-medium">Excellent Performance</p>
-                  <p className="text-green-700">XIRR is beating NIFTY 50 by {metrics.outperformance.toFixed(1)}%</p>
+              {metrics.outperformance === null || metrics.outperformance === undefined ? (
+                <div className="p-3 bg-yellow-50 border-l-4 border-yellow-500 rounded">
+                  <p className="text-yellow-800 font-medium">XIRR Calculation Error</p>
+                  <p className="text-yellow-700">Unable to calculate XIRR-based performance comparison. Please check backend logs.</p>
                 </div>
-              )}
-              {metrics.outperformance < -2 && (
-                <div className="p-3 bg-red-50 border-l-4 border-red-500 rounded">
-                  <p className="text-red-800 font-medium">Underperformance</p>
-                  <p className="text-red-700">XIRR is lagging NIFTY 50 by {Math.abs(metrics.outperformance).toFixed(1)}%</p>
-                </div>
-              )}
-              {Math.abs(metrics.outperformance) <= 2 && (
-                <div className="p-3 bg-blue-50 border-l-4 border-blue-500 rounded">
-                  <p className="text-blue-800 font-medium">Market Performance</p>
-                  <p className="text-blue-700">XIRR is tracking close to NIFTY 50</p>
-                </div>
+              ) : (
+                <>
+                  {metrics.outperformance > 2 && (
+                    <div className="p-3 bg-green-50 border-l-4 border-green-500 rounded">
+                      <p className="text-green-800 font-medium">Excellent Performance</p>
+                      <p className="text-green-700">XIRR is beating NIFTY 50 by {metrics.outperformance.toFixed(1)}%</p>
+                    </div>
+                  )}
+                  {metrics.outperformance < -2 && (
+                    <div className="p-3 bg-red-50 border-l-4 border-red-500 rounded">
+                      <p className="text-red-800 font-medium">Underperformance</p>
+                      <p className="text-red-700">XIRR is lagging NIFTY 50 by {Math.abs(metrics.outperformance).toFixed(1)}%</p>
+                    </div>
+                  )}
+                  {Math.abs(metrics.outperformance) <= 2 && (
+                    <div className="p-3 bg-blue-50 border-l-4 border-blue-500 rounded">
+                      <p className="text-blue-800 font-medium">Market Performance</p>
+                      <p className="text-blue-700">XIRR is tracking close to NIFTY 50</p>
+                    </div>
+                  )}
+                </>
               )}
               {metrics.sharpeRatio > 1.5 && (
                 <div className="p-3 bg-purple-50 border-l-4 border-purple-500 rounded">

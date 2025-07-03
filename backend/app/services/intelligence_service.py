@@ -1428,7 +1428,9 @@ class IntelligenceService:
                     "returns": metrics['annualizedReturn'],  # Use annualized return for XIRR
                     "annualizedReturn": metrics['annualizedReturn'],
                     "benchmarkReturns": metrics['benchmarkReturns'],
+                    "benchmarkXIRR": metrics.get('benchmarkXIRR'),  # Add XIRR field
                     "outperformance": metrics['outperformance'],
+                    "outperformanceXIRR": metrics.get('outperformanceXIRR'),  # Add XIRR-based outperformance
                     "metrics": metrics['metrics']  # This already contains the detailed metrics
                 }
                 formatted_performance_metrics.append(formatted_metrics)
@@ -1776,24 +1778,41 @@ class IntelligenceService:
                             total_return = (1 + portfolio_return_series).prod() - 1
                             annualized_return = ((1 + total_return) ** (365 / period_days)) - 1
                             
+                            # Calculate CAGR benchmark (existing calculation)
                             benchmark_total_return = 0
+                            benchmark_cagr = 0
                             if benchmark_returns is not None:
                                 benchmark_aligned = benchmark_returns.reindex(common_dates, fill_value=0)
                                 benchmark_total_return = (1 + benchmark_aligned).prod() - 1
-                                benchmark_annualized = ((1 + benchmark_total_return) ** (365 / period_days)) - 1
+                                benchmark_cagr = ((1 + benchmark_total_return) ** (365 / period_days)) - 1
+                            
+                            # Calculate XIRR benchmark (new calculation for apples-to-apples comparison)
+                            benchmark_xirr = await self._calculate_benchmark_xirr_from_cache(
+                                holdings, market_data, start_date, end_date
+                            )
+                            
+                            # Ensure XIRR is calculated properly
+                            if benchmark_xirr is None:
+                                logger.error(f"❌ Benchmark XIRR calculation failed for {timeframe}, cannot proceed with XIRR comparison")
+                                # Don't fall back to CAGR - instead mark as calculation error
+                                outperformance_xirr = None
                             else:
-                                benchmark_annualized = 0
+                                outperformance_xirr = (annualized_return - benchmark_xirr) * 100
                             
                             performance_data.append({
                                 'timeframe': timeframe,
                                 'returns': total_return * 100,  # Convert to percentage
                                 'annualizedReturn': annualized_return * 100,
-                                'benchmarkReturns': benchmark_total_return * 100,
-                                'outperformance': (annualized_return - benchmark_annualized) * 100,
+                                'benchmarkReturns': benchmark_total_return * 100,  # Keep CAGR for backward compatibility
+                                'benchmarkCAGR': benchmark_cagr * 100,  # Explicit CAGR field
+                                'benchmarkXIRR': benchmark_xirr * 100 if benchmark_xirr is not None else None,  # New XIRR field for apples-to-apples
+                                'outperformance': (annualized_return - benchmark_cagr) * 100,  # vs CAGR (current)
+                                'outperformanceXIRR': outperformance_xirr,  # vs XIRR (new) - None if calculation failed
                                 'metrics': metrics
                             })
                             
-                            logger.info(f"✅ Calculated cached metrics for {timeframe}: {annualized_return*100:.1f}% return")
+                            benchmark_xirr_display = f"{benchmark_xirr*100:.1f}%" if benchmark_xirr is not None else "N/A"
+                            logger.info(f"✅ Calculated cached metrics for {timeframe}: Portfolio={annualized_return*100:.1f}%, Benchmark CAGR={benchmark_cagr*100:.1f}%, Benchmark XIRR={benchmark_xirr_display}")
                         else:
                             logger.warning(f"Insufficient data for {timeframe}: only {len(common_dates)} common dates")
                     else:
@@ -1809,6 +1828,149 @@ class IntelligenceService:
         except Exception as e:
             logger.error(f"❌ Cached performance calculation failed: {e}")
             return []
+
+    async def _calculate_benchmark_xirr_from_cache(
+        self,
+        holdings: List[Any],
+        market_data: Dict[str, pd.DataFrame],
+        start_date: datetime,
+        end_date: datetime
+    ) -> float:
+        """
+        Calculate benchmark XIRR using a standardized 1 NIFTY unit investment.
+        This creates a consistent benchmark comparison that always works regardless 
+        of portfolio holdings or their purchase dates.
+        
+        The calculation simulates investing in 1 NIFTY 50 unit at the start of the 
+        analysis period and calculates the XIRR over the timeframe.
+        
+        Args:
+            holdings: Portfolio holdings (not used in standardized approach)
+            market_data: Cached market data including NIFTY 50 data
+            start_date: Start date for the analysis period
+            end_date: End date for the analysis period
+            
+        Returns:
+            XIRR as a decimal (e.g., 0.12 for 12%)
+        """
+        try:
+            from datetime import datetime, date
+            import pandas as pd
+            
+            logger.debug(f"📊 Calculating standardized benchmark XIRR (1 NIFTY unit) from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
+            
+            # Get NIFTY 50 data from cache
+            if "^NSEI" not in market_data or market_data["^NSEI"].empty:
+                logger.warning("⚠️ No NIFTY 50 data available for benchmark XIRR calculation")
+                return None
+            
+            nifty_data = market_data["^NSEI"]
+            
+            # Get close price column
+            close_found, close_col = self._get_price_column(nifty_data, 'Close', "^NSEI")
+            if not close_found:
+                logger.error("❌ Could not find Close column in NIFTY data")
+                return None
+            
+            # Get NIFTY price at start of period
+            nifty_start_price = self._get_nifty_price_on_date(nifty_data, close_col, start_date)
+            if nifty_start_price is None:
+                logger.warning(f"⚠️ Could not find NIFTY price for start date {start_date.strftime('%Y-%m-%d')}")
+                return None
+            
+            # Get NIFTY price at end of period  
+            nifty_end_price = self._get_nifty_price_on_date(nifty_data, close_col, end_date)
+            if nifty_end_price is None:
+                logger.warning(f"⚠️ Could not find NIFTY price for end date {end_date.strftime('%Y-%m-%d')}")
+                return None
+            
+            # Calculate 1 NIFTY unit investment
+            NIFTY_UNITS = 1.0  # Standardized: 1 NIFTY unit
+            investment_amount = NIFTY_UNITS * nifty_start_price  # Cost of 1 unit at start
+            end_value = NIFTY_UNITS * nifty_end_price           # Value of 1 unit at end
+            
+            # Create simple cash flows for 1 NIFTY unit
+            from backend.app.services.portfolio_performance_calculator import CashFlow
+            cash_flows = [
+                CashFlow(date=start_date.date(), amount=-investment_amount),  # Buy 1 NIFTY unit
+                CashFlow(date=end_date.date(), amount=end_value)              # Current value of 1 unit
+            ]
+            
+            logger.debug(f"📊 Standardized benchmark XIRR calculation:")
+            logger.debug(f"    NIFTY units: {NIFTY_UNITS}")
+            logger.debug(f"    Start price: ₹{nifty_start_price:.2f}")
+            logger.debug(f"    End price: ₹{nifty_end_price:.2f}")
+            logger.debug(f"    Investment: ₹{investment_amount:.2f}")
+            logger.debug(f"    End value: ₹{end_value:.2f}")
+            logger.debug(f"    Absolute return: ₹{end_value - investment_amount:.2f}")
+            logger.debug(f"    Simple return: {((end_value / investment_amount) - 1) * 100:.2f}%")
+            logger.debug(f"    Cash flows: {len(cash_flows)} total")
+            
+            # Calculate XIRR using the same method as portfolio
+            from backend.app.services.portfolio_performance_calculator import PortfolioPerformanceCalculator
+            calculator = PortfolioPerformanceCalculator()
+            benchmark_xirr = calculator.calculate_xirr(cash_flows)
+            
+            if benchmark_xirr is None:
+                logger.error(f"❌ Benchmark XIRR calculation returned None - insufficient convergence")
+                logger.error(f"    Cash flows: {[f'Date: {cf.date}, Amount: {cf.amount}' for cf in cash_flows]}")
+                return None
+            
+            logger.debug(f"✅ Standardized benchmark XIRR calculated: {benchmark_xirr:.6f} ({benchmark_xirr*100:.2f}%)")
+            
+            return benchmark_xirr
+            
+        except Exception as e:
+            logger.error(f"❌ Benchmark XIRR calculation failed: {e}")
+            return None
+    
+    def _get_nifty_price_on_date(
+        self, 
+        nifty_data: pd.DataFrame, 
+        close_col: str, 
+        target_date: datetime
+    ) -> float:
+        """
+        Get NIFTY price on a specific date, or the closest available date.
+        
+        Args:
+            nifty_data: NIFTY historical data
+            close_col: Name of the close price column
+            target_date: Target date to find price for
+            
+        Returns:
+            Price on the date, or None if not found
+        """
+        try:
+            target_date_only = target_date.date()
+            
+            # Try exact date first
+            exact_matches = nifty_data[nifty_data.index.date == target_date_only]
+            if not exact_matches.empty:
+                return float(exact_matches[close_col].iloc[0])
+            
+            # Find closest date (within 7 days)
+            available_dates = nifty_data.index
+            closest_date = None
+            min_diff = float('inf')
+            
+            for available_date in available_dates:
+                diff = abs((available_date.date() - target_date_only).days)
+                if diff < min_diff and diff <= 7:  # Within 7 days
+                    min_diff = diff
+                    closest_date = available_date
+            
+            if closest_date is not None:
+                price = float(nifty_data.loc[closest_date, close_col])
+                logger.debug(f"📅 Using {closest_date.strftime('%Y-%m-%d')} price ₹{price:.2f} for target date {target_date_only}")
+                return price
+            
+            logger.warning(f"⚠️ Could not find NIFTY price within 7 days of {target_date_only}")
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Error getting NIFTY price for {target_date}: {e}")
+            return None
 
     async def _calculate_time_series_from_cache(
         self, 
@@ -1876,34 +2038,51 @@ class IntelligenceService:
                             
                             # Extract the calculated values
                             portfolio_return = metrics['annualizedReturn']
-                            benchmark_return = metrics['benchmarkReturns']
+                            benchmark_cagr = metrics['benchmarkReturns']
+                            benchmark_xirr = metrics.get('benchmarkXIRR')  # Don't fall back to CAGR
+                            
+                            # Only calculate XIRR-based metrics if XIRR is available
+                            if benchmark_xirr is not None:
+                                benchmark_xirr_return = benchmark_xirr
+                                outperformance_xirr = portfolio_return - benchmark_xirr
+                            else:
+                                benchmark_xirr_return = None
+                                outperformance_xirr = None
+                                logger.warning(f"⚠️ XIRR not available for {point_type} {i}, XIRR-based metrics will be null")
                             
                             series_data.append({
                                 "period": f"{point_type} {i}",
                                 "portfolio_return": portfolio_return,
-                                "benchmark_return": benchmark_return,
-                                "outperformance": portfolio_return - benchmark_return
+                                "benchmark_return": benchmark_cagr,  # Keep CAGR for backward compatibility
+                                "benchmark_xirr_return": benchmark_xirr_return,  # XIRR for apples-to-apples comparison (null if failed)
+                                "outperformance": portfolio_return - benchmark_cagr,  # vs CAGR (existing)
+                                "outperformance_xirr": outperformance_xirr  # vs XIRR (null if XIRR calculation failed)
                             })
                             
-                            logger.debug(f"✅ {point_type} {i}: Portfolio={portfolio_return:.2f}%, Benchmark={benchmark_return:.2f}%")
+                            benchmark_xirr_display = f"{benchmark_xirr:.2f}%" if benchmark_xirr is not None else "N/A"
+                            logger.debug(f"✅ {point_type} {i}: Portfolio={portfolio_return:.2f}%, Benchmark CAGR={benchmark_cagr:.2f}%, Benchmark XIRR={benchmark_xirr_display}")
                         else:
                             logger.warning(f"⚠️ No cached data available for {point_type} {i}")
-                            # Add a placeholder with zero values
+                            # Add a placeholder with null values for missing data
                             series_data.append({
                                 "period": f"{point_type} {i}",
-                                "portfolio_return": 0.0,
-                                "benchmark_return": 0.0,
-                                "outperformance": 0.0
+                                "portfolio_return": None,
+                                "benchmark_return": None,
+                                "benchmark_xirr_return": None,
+                                "outperformance": None,
+                                "outperformance_xirr": None
                             })
                             
                     except Exception as e:
                         logger.error(f"❌ Failed to calculate cached {point_type} {i}: {e}")
-                        # Add a placeholder with zero values
+                        # Add a placeholder with null values for failed calculations
                         series_data.append({
                             "period": f"{point_type} {i}",
-                            "portfolio_return": 0.0,
-                            "benchmark_return": 0.0,
-                            "outperformance": 0.0
+                            "portfolio_return": None,
+                            "benchmark_return": None,
+                            "benchmark_xirr_return": None,
+                            "outperformance": None,
+                            "outperformance_xirr": None
                         })
                         continue
                 

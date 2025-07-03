@@ -30,7 +30,10 @@ class PerformanceMetrics(BaseModel):
     returns: float
     annualizedReturn: float
     benchmarkReturns: float
+    benchmarkCAGR: Optional[float] = None  # Explicit CAGR field  
+    benchmarkXIRR: Optional[float] = None  # New XIRR field for apples-to-apples comparison
     outperformance: float
+    outperformanceXIRR: Optional[float] = None  # New XIRR-based outperformance
     metrics: Dict[str, float]
 
 class PortfolioPerformanceResponse(BaseModel):
@@ -530,16 +533,18 @@ async def calculate_portfolio_performance_v4(
         for holding in request.holdings:
             # Create a simple object with the required attributes
             class HoldingObj:
-                def __init__(self, ticker, quantity, avg_buy_price, current_price=None):
+                def __init__(self, ticker, quantity, avg_buy_price, purchase_date, current_price=None):
                     self.ticker = ticker
                     self.quantity = quantity
                     self.avg_buy_price = avg_buy_price
+                    self.purchase_date = purchase_date
                     self.current_price = current_price
             
             holdings.append(HoldingObj(
                 ticker=holding.ticker,
                 quantity=holding.quantity,
                 avg_buy_price=holding.purchase_price,
+                purchase_date=holding.purchase_date,
                 current_price=None  # Will be fetched by the service
             ))
         
