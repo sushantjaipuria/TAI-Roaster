@@ -35,57 +35,108 @@ class PortfolioPerformanceCalculator:
         self._price_cache = {}
         self._nifty_cache = {}
     
-    def calculate_xirr(self, cash_flows: List[CashFlow], guess: float = 0.1) -> float:
+    def calculate_xirr(self, cash_flows: List[CashFlow]) -> float:
         """
-        Calculate XIRR using Newton-Raphson method.
+        Calculate XIRR (Extended Internal Rate of Return) using Newton-Raphson method.
         
         Args:
-            cash_flows: List of cash flows with dates
-            guess: Initial guess for XIRR calculation
+            cash_flows: List of CashFlow objects with dates and amounts
             
         Returns:
-            XIRR as decimal (e.g., 0.12 for 12%)
+            XIRR as a decimal (e.g., 0.12 for 12%)
         """
-        if len(cash_flows) < 2:
+        if not cash_flows or len(cash_flows) < 2:
+            logger.warning(f"[DEBUG-XIRR] XIRR calculation - insufficient cash flows: {len(cash_flows)}")
             return 0.0
-            
-        def xnpv(rate: float, cash_flows: List[CashFlow]) -> float:
-            """Calculate NPV for given rate"""
-            base_date = min(cf.date for cf in cash_flows)
-            npv = 0.0
-            
-            for cf in cash_flows:
-                days_diff = (cf.date - base_date).days
-                years_diff = days_diff / 365.25
-                npv += cf.amount / ((1 + rate) ** years_diff)
-                
-            return npv
         
-        def xnpv_derivative(rate: float, cash_flows: List[CashFlow]) -> float:
-            """Calculate derivative of NPV for Newton-Raphson method"""
-            base_date = min(cf.date for cf in cash_flows)
-            derivative = 0.0
-            
-            for cf in cash_flows:
-                days_diff = (cf.date - base_date).days
-                years_diff = days_diff / 365.25
-                derivative -= years_diff * cf.amount / ((1 + rate) ** (years_diff + 1))
-                
-            return derivative
+        # DEBUG: Log cash flows before calculation
+        logger.info(f"[DEBUG-XIRR] XIRR calculation starting with {len(cash_flows)} cash flows:")
+        total_positive = 0
+        total_negative = 0
+        for i, cf in enumerate(cash_flows):
+            logger.info(f"    [{i}] {cf.date}: ${cf.amount:.2f}")
+            if cf.amount > 0:
+                total_positive += cf.amount
+            else:
+                total_negative += cf.amount
         
-        try:
-            # Use Newton-Raphson method to solve for XIRR
-            xirr = newton(
-                func=lambda r: xnpv(r, cash_flows),
-                fprime=lambda r: xnpv_derivative(r, cash_flows),
-                x0=guess,
-                maxiter=100,
-                tol=1e-6
-            )
-            return xirr
-        except Exception as e:
-            logger.warning(f"XIRR calculation failed with Newton-Raphson: {e}. Using fallback method.")
-            return self._calculate_xirr_fallback(cash_flows)
+        logger.info(f"[DEBUG-XIRR] Cash flow totals: positive=${total_positive:.2f}, negative=${total_negative:.2f}, net=${total_positive + total_negative:.2f}")
+        
+        # Sort cash flows by date
+        sorted_flows = sorted(cash_flows, key=lambda x: x.date)
+        base_date = sorted_flows[0].date
+        
+        logger.info(f"[DEBUG-XIRR] Base date for XIRR: {base_date}")
+        
+        # Convert dates to time differences in years
+        time_diffs = []
+        for cf in sorted_flows:
+            days_diff = (cf.date - base_date).days
+            years_diff = days_diff / 365.25
+            time_diffs.append(years_diff)
+            logger.info(f"    {cf.date}: {days_diff} days = {years_diff:.4f} years")
+        
+        # Newton-Raphson method
+        rate = 0.1  # Initial guess: 10%
+        tolerance = 1e-6
+        max_iterations = 100
+        
+        logger.info(f"[DEBUG-XIRR] Starting Newton-Raphson with initial rate: {rate:.6f} ({rate*100:.4f}%)")
+        
+        for iteration in range(max_iterations):
+            npv = 0  # Net Present Value
+            npv_derivative = 0  # Derivative of NPV
+            
+            for i, cf in enumerate(sorted_flows):
+                years_diff = time_diffs[i]
+                
+                # Calculate NPV term: amount / (1 + rate)^years
+                if years_diff == 0:
+                    term = cf.amount
+                    derivative_term = 0
+                else:
+                    denominator = (1 + rate) ** years_diff
+                    term = cf.amount / denominator
+                    derivative_term = -cf.amount * years_diff / ((1 + rate) ** (years_diff + 1))
+                
+                npv += term
+                npv_derivative += derivative_term
+            
+            # Log iteration details (first few and last few)
+            if iteration < 5 or iteration >= max_iterations - 5:
+                logger.info(f"    Iteration {iteration}: rate={rate:.6f} ({rate*100:.4f}%), NPV={npv:.6f}, derivative={npv_derivative:.6f}")
+            
+            # Check convergence
+            if abs(npv) < tolerance:
+                logger.info(f"[DEBUG-XIRR] XIRR converged after {iteration} iterations: {rate:.6f} ({rate*100:.4f}%)")
+                return rate
+            
+            # Newton-Raphson update
+            if abs(npv_derivative) < tolerance:
+                logger.warning(f"[DEBUG-XIRR] XIRR derivative too small: {npv_derivative:.6f}, stopping at iteration {iteration}")
+                break
+            
+            old_rate = rate
+            rate = rate - npv / npv_derivative
+            
+            # Prevent extreme values
+            if rate < -0.99:  # Prevent rates below -99%
+                rate = -0.99
+            elif rate > 10.0:  # Prevent rates above 1000%
+                rate = 10.0
+            
+            # Log significant rate changes
+            if abs(rate - old_rate) > 0.1:  # If rate changes by more than 10%
+                logger.info(f"    Large rate change: {old_rate:.6f} -> {rate:.6f}")
+        
+        logger.warning(f"[DEBUG-XIRR] XIRR did not converge after {max_iterations} iterations. Final rate: {rate:.6f} ({rate*100:.4f}%)")
+        
+        # Sanity check the result
+        if abs(rate) > 5.0:  # If rate is more than 500%
+            logger.warning(f"[DEBUG-XIRR] Extreme XIRR rate detected: {rate*100:.4f}%, returning 0")
+            return 0.0
+        
+        return rate
     
     def _calculate_xirr_fallback(self, cash_flows: List[CashFlow]) -> float:
         """Fallback XIRR calculation using bisection method"""
@@ -277,13 +328,36 @@ class PortfolioPerformanceCalculator:
         Returns comprehensive performance data including XIRR calculations.
         """
         try:
+            # DEBUG: Log input parameters
+            logger.info(f"[DEBUG-XIRR] Starting portfolio performance calculation:")
+            logger.info(f"  Holdings count: {len(holdings)}")
+            logger.info(f"  Time periods: {time_periods}")
+            logger.info(f"  Holdings details:")
+            for i, holding in enumerate(holdings):
+                logger.info(f"    [{i}] {holding.ticker}: {holding.quantity} @ ${holding.purchase_price} on {holding.purchase_date}")
+            
             # Step 1: Get current stock prices
             tickers = [holding.ticker for holding in holdings]
+            logger.info(f"[DEBUG-XIRR] Fetching current prices for tickers: {tickers}")
+            
             current_prices = await self.get_current_stock_prices(tickers)
             
+            # DEBUG: Log price fetching results
+            logger.info(f"[DEBUG-XIRR] Current prices fetched:")
+            for ticker, price in current_prices.items():
+                logger.info(f"    {ticker}: ${price:.2f}")
+            
+            # Log any missing prices
+            missing_prices = [ticker for ticker in tickers if ticker not in current_prices]
+            if missing_prices:
+                logger.warning(f"[DEBUG-XIRR] Missing current prices for: {missing_prices}")
+            
             # Step 2: Update holdings with current prices
+            logger.info(f"[DEBUG-XIRR] Updating holdings with current prices:")
             for holding in holdings:
+                old_current_price = holding.current_price
                 holding.current_price = current_prices.get(holding.ticker, holding.purchase_price)
+                logger.info(f"    {holding.ticker}: purchase=${holding.purchase_price:.2f}, current=${holding.current_price:.2f}, using_fallback={holding.current_price == holding.purchase_price}")
             
             # Step 3: Calculate portfolio performance for each time period
             performance_data = {}
@@ -292,12 +366,23 @@ class PortfolioPerformanceCalculator:
             earliest_date = min(holding.purchase_date for holding in holdings)
             latest_date = max(current_date, max(holding.purchase_date for holding in holdings))
             
+            logger.info(f"[DEBUG-XIRR] Date range analysis:")
+            logger.info(f"    Current date: {current_date}")
+            logger.info(f"    Earliest holding date: {earliest_date}")
+            logger.info(f"    Latest date: {latest_date}")
+            
             # Step 4: Get NIFTY50 benchmark data
+            logger.info(f"[DEBUG-XIRR] Fetching NIFTY50 data from {earliest_date} to {latest_date}")
             nifty_data = await self.get_nifty50_historical_data(earliest_date, latest_date)
+            logger.info(f"[DEBUG-XIRR] NIFTY50 data: {len(nifty_data)} records, empty={nifty_data.empty}")
+            
             nifty_returns = self.calculate_nifty50_returns(nifty_data, time_periods)
+            logger.info(f"[DEBUG-XIRR] NIFTY50 returns: {nifty_returns}")
             
             # Step 5: Calculate performance for each time period
             for period in time_periods:
+                logger.info(f"[DEBUG-XIRR] Processing period: {period}")
+                
                 # Calculate period start date
                 if period == '6M':
                     period_start = current_date - timedelta(days=180)
@@ -308,21 +393,33 @@ class PortfolioPerformanceCalculator:
                 elif period == '5Y':
                     period_start = current_date - timedelta(days=365*5)
                 else:
+                    logger.warning(f"[DEBUG-XIRR] Unknown period: {period}, skipping")
                     continue
+                
+                logger.info(f"[DEBUG-XIRR] Period {period}: start_date={period_start}, current_date={current_date}")
                 
                 # Filter holdings for this period
                 period_holdings = [h for h in holdings if h.purchase_date >= period_start]
+                logger.info(f"[DEBUG-XIRR] Period holdings: {len(period_holdings)}/{len(holdings)} holdings qualify")
+                
+                for i, holding in enumerate(period_holdings):
+                    logger.info(f"    [{i}] {holding.ticker}: purchase_date={holding.purchase_date} >= {period_start} ✓")
                 
                 if not period_holdings:
+                    logger.warning(f"[DEBUG-XIRR] No holdings found for period {period}, skipping")
                     continue
                 
                 # Calculate XIRR for this period
                 cash_flows = []
                 
                 # Add investment cash flows (negative)
+                logger.info(f"[DEBUG-XIRR] Building cash flows for XIRR calculation:")
+                total_investments = 0
                 for holding in period_holdings:
                     investment_amount = -(holding.quantity * holding.purchase_price)
+                    total_investments += -investment_amount
                     cash_flows.append(CashFlow(holding.purchase_date, investment_amount))
+                    logger.info(f"    Investment: {holding.purchase_date} -> ${investment_amount:.2f} ({holding.ticker})")
                 
                 # Add current value (positive)
                 current_portfolio_value = sum(
@@ -330,13 +427,27 @@ class PortfolioPerformanceCalculator:
                     for holding in period_holdings
                 )
                 cash_flows.append(CashFlow(current_date, current_portfolio_value))
+                logger.info(f"    Current value: {current_date} -> ${current_portfolio_value:.2f}")
+                
+                logger.info(f"[DEBUG-XIRR] Cash flow summary:")
+                logger.info(f"    Total investments: ${total_investments:.2f}")
+                logger.info(f"    Current value: ${current_portfolio_value:.2f}")
+                logger.info(f"    Absolute return: ${current_portfolio_value - total_investments:.2f}")
+                logger.info(f"    Simple return: {((current_portfolio_value / total_investments) - 1) * 100:.2f}%")
+                logger.info(f"    Days invested: {(current_date - period_holdings[0].purchase_date).days}")
                 
                 # Calculate XIRR
+                logger.info(f"[DEBUG-XIRR] Calculating XIRR with {len(cash_flows)} cash flows...")
                 portfolio_xirr = self.calculate_xirr(cash_flows)
                 portfolio_xirr_pct = portfolio_xirr * 100  # Convert to percentage
                 
+                logger.info(f"[DEBUG-XIRR] XIRR calculation result:")
+                logger.info(f"    Raw XIRR: {portfolio_xirr:.6f}")
+                logger.info(f"    XIRR percentage: {portfolio_xirr_pct:.4f}%")
+                
                 # Get benchmark return for this period
                 benchmark_return = nifty_returns.get(period, 10.0)
+                logger.info(f"[DEBUG-XIRR] Benchmark return for {period}: {benchmark_return:.4f}%")
                 
                 # Calculate metrics
                 outperformance = portfolio_xirr_pct - benchmark_return
@@ -372,11 +483,18 @@ class PortfolioPerformanceCalculator:
                         "maxDrawdown": max_drawdown
                     }
                 }
+                
+                logger.info(f"[DEBUG-XIRR] Final metrics for {period}:")
+                logger.info(f"    Returns: {portfolio_xirr_pct:.4f}%")
+                logger.info(f"    Benchmark: {benchmark_return:.4f}%")
+                logger.info(f"    Outperformance: {outperformance:.4f}%")
             
             # Step 6: Generate time series data for charts
+            logger.info(f"[DEBUG-XIRR] Generating time series data...")
             time_series_data = self._generate_time_series_data(holdings, performance_data)
+            logger.info(f"[DEBUG-XIRR] Time series data generated for periods: {list(time_series_data.keys())}")
             
-            return {
+            result = {
                 "performance_metrics": list(performance_data.values()),
                 "time_series_data": time_series_data,
                 "calculation_timestamp": datetime.now().isoformat(),
@@ -387,8 +505,18 @@ class PortfolioPerformanceCalculator:
                 }
             }
             
+            logger.info(f"[DEBUG-XIRR] Calculation completed successfully:")
+            logger.info(f"    Performance metrics: {len(result['performance_metrics'])} periods")
+            logger.info(f"    Time series data: {len(result['time_series_data'])} periods")
+            
+            return result
+            
         except Exception as e:
-            logger.error(f"Portfolio performance calculation failed: {e}")
+            logger.error(f"[DEBUG-XIRR] Portfolio performance calculation failed:", exc_info=True)
+            logger.error(f"  Error type: {type(e)}")
+            logger.error(f"  Error message: {str(e)}")
+            logger.error(f"  Holdings: {holdings}")
+            logger.error(f"  Time periods: {time_periods}")
             return {
                 "error": str(e),
                 "performance_metrics": [],
@@ -434,8 +562,8 @@ class PortfolioPerformanceCalculator:
                 
                 series_data.append({
                     "period": f"{point_type} {i}",
-                    "portfolio_return": max(0.1, portfolio_return),
-                    "benchmark_return": max(0.1, benchmark_return),
+                    "portfolio_return": portfolio_return,
+                    "benchmark_return": benchmark_return,
                     "outperformance": portfolio_return - benchmark_return
                 })
             

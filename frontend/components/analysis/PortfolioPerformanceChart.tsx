@@ -69,6 +69,20 @@ export default function PortfolioPerformanceChart({ portfolioData }: PortfolioPe
     setError(null)
 
     try {
+      // DEBUG: Log original portfolio data
+      console.log('[DEBUG-XIRR] Original portfolio data:', {
+        analysisId: portfolioData.analysisId,
+        stocksCount: portfolioData.stocks.length,
+        stocks: portfolioData.stocks.map(stock => ({
+          ticker: stock.ticker,
+          quantity: stock.quantity,
+          entryPrice: stock.entryPrice,
+          currentPrice: stock.currentPrice,
+          purchaseDate: stock.purchaseDate,
+          totalInvested: stock.quantity * stock.entryPrice
+        }))
+      })
+
       // Calculate single investment date based on timeframe (mutual fund approach)
       const now = new Date()
       let investmentDate: string
@@ -90,6 +104,14 @@ export default function PortfolioPerformanceChart({ portfolioData }: PortfolioPe
           investmentDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
       }
 
+      // DEBUG: Log timeframe calculation
+      console.log('[DEBUG-XIRR] Timeframe calculation:', {
+        selectedTimeframe: timeframe,
+        calculatedInvestmentDate: investmentDate,
+        currentDate: now.toISOString().split('T')[0],
+        daysDifference: Math.round((now.getTime() - new Date(investmentDate).getTime()) / (1000 * 60 * 60 * 24))
+      })
+
       const requestBody = {
         holdings: portfolioData.stocks.map(stock => ({
           ticker: stock.ticker.endsWith('.NS') ? stock.ticker : `${stock.ticker}.NS`,
@@ -100,9 +122,18 @@ export default function PortfolioPerformanceChart({ portfolioData }: PortfolioPe
         time_periods: [timeframe]
       }
 
-      console.log('🔄 Fetching XIRR data:', requestBody)
+      // DEBUG: Log complete request body with totals
+      const totalInvestment = requestBody.holdings.reduce((sum, h) => sum + (h.quantity * h.purchase_price), 0)
+      console.log('[DEBUG-XIRR] API Request Details:', {
+        endpoint: '/api/portfolio-performance/calculate-performance-v4',
+        holdingsCount: requestBody.holdings.length,
+        timeframe: timeframe,
+        totalInvestment: totalInvestment,
+        holdings: requestBody.holdings,
+        requestBody: requestBody
+      })
 
-      const response = await fetch('/api/portfolio-performance/calculate-performance', {
+      const response = await fetch('/api/portfolio-performance/calculate-performance-v4', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -110,12 +141,33 @@ export default function PortfolioPerformanceChart({ portfolioData }: PortfolioPe
         body: JSON.stringify(requestBody),
       })
 
+      // DEBUG: Log response status
+      console.log('[DEBUG-XIRR] API Response Status:', {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok,
+        headers: Object.fromEntries(response.headers.entries())
+      })
+
       if (!response.ok) {
         throw new Error(`API Error: ${response.status} - ${response.statusText}`)
       }
 
       const data = await response.json()
-      console.log('📊 Received XIRR data:', data)
+      
+      // DEBUG: Log complete response data structure
+      console.log('[DEBUG-XIRR] Complete API Response:', {
+        hasPerformanceMetrics: !!data.performance_metrics,
+        performanceMetricsCount: data.performance_metrics?.length || 0,
+        performanceMetrics: data.performance_metrics,
+        hasTimeSeriesData: !!data.time_series_data,
+        timeSeriesKeys: data.time_series_data ? Object.keys(data.time_series_data) : [],
+        timeSeriesData: data.time_series_data,
+        calculationTimestamp: data.calculation_timestamp,
+        dataSources: data.data_sources,
+        error: data.error,
+        fullResponse: data
+      })
 
       if (data.performance_metrics && data.performance_metrics.length > 0) {
         // Find the performance data for the current timeframe
@@ -123,13 +175,47 @@ export default function PortfolioPerformanceChart({ portfolioData }: PortfolioPe
           metric.timeframe === timeframe
         ) || data.performance_metrics[0]
         
+        // DEBUG: Log metrics selection and values
+        console.log('[DEBUG-XIRR] Metrics Processing:', {
+          requestedTimeframe: timeframe,
+          availableTimeframes: data.performance_metrics.map((m: any) => m.timeframe),
+          foundExactMatch: !!data.performance_metrics.find((m: any) => m.timeframe === timeframe),
+          selectedMetrics: currentMetrics,
+          returns: currentMetrics?.returns,
+          benchmarkReturns: currentMetrics?.benchmarkReturns,
+          outperformance: currentMetrics?.outperformance
+        })
+        
         // Transform time series data for the current timeframe
         const timeSeriesForPeriod = data.time_series_data[timeframe] || []
+        
+        // DEBUG: Log time series processing
+        console.log('[DEBUG-XIRR] Time Series Processing:', {
+          timeframe: timeframe,
+          timeSeriesLength: timeSeriesForPeriod.length,
+          timeSeriesData: timeSeriesForPeriod,
+          firstPoint: timeSeriesForPeriod[0],
+          lastPoint: timeSeriesForPeriod[timeSeriesForPeriod.length - 1]
+        })
+        
         const chartData: PerformanceData[] = timeSeriesForPeriod.map((point: any, index: number) => {
           // Fix chart values to be more realistic
           const monthsElapsed = index + 1
-          const portfolioReturn = Math.max(0.1, point.portfolio_return || currentMetrics.returns)
-          const benchmarkReturn = Math.max(0.1, point.benchmark_return || currentMetrics.benchmarkReturns)
+          const portfolioReturn = point.portfolio_return || currentMetrics.returns
+          const benchmarkReturn = point.benchmark_return || currentMetrics.benchmarkReturns
+          
+          // DEBUG: Log chart data point processing
+          if (index === 0) {
+            console.log('[DEBUG-XIRR] Chart Data Point Processing (V4 - Optimized Real XIRR):', {
+              originalPortfolioReturn: point.portfolio_return,
+              fallbackReturn: currentMetrics.returns,
+              finalPortfolioReturn: portfolioReturn,
+              originalBenchmarkReturn: point.benchmark_return,
+              fallbackBenchmarkReturn: currentMetrics.benchmarkReturns,
+              finalBenchmarkReturn: benchmarkReturn,
+              calculationMethod: 'Real historical XIRR for each time point (V4)'
+            })
+          }
           
           return {
             period: point.period,
@@ -152,14 +238,32 @@ export default function PortfolioPerformanceChart({ portfolioData }: PortfolioPe
           maxDrawdown: currentMetrics.metrics.maxDrawdown
         }
 
+        // DEBUG: Log final display values
+        console.log('[DEBUG-XIRR] Final Display Values:', {
+          metricsBoxXIRR: performanceMetrics.portfolioXIRR,
+          metricsBoxBenchmark: performanceMetrics.benchmarkXIRR,
+          metricsBoxOutperformance: performanceMetrics.outperformance,
+          chartDataLength: chartData.length,
+          firstChartPoint: chartData[0],
+          lastChartPoint: chartData[chartData.length - 1],
+          performanceMetrics: performanceMetrics
+        })
+
         setPerformanceData(chartData)
         setMetrics(performanceMetrics)
         setLastRefresh(new Date())
       } else {
+        console.error('[DEBUG-XIRR] No performance metrics in response:', data)
         throw new Error(data.error || 'Failed to calculate XIRR')
       }
     } catch (err) {
-      console.error('❌ XIRR calculation error:', err)
+      console.error('[DEBUG-XIRR] XIRR calculation error details:', {
+        error: err,
+        message: err instanceof Error ? err.message : 'Unknown error',
+        stack: err instanceof Error ? err.stack : undefined,
+        portfolioData: portfolioData,
+        timeframe: timeframe
+      })
       setError(err instanceof Error ? err.message : 'Failed to fetch performance data')
       setPerformanceData([])
       setMetrics(null)
@@ -167,8 +271,6 @@ export default function PortfolioPerformanceChart({ portfolioData }: PortfolioPe
       setLoading(false)
     }
   }
-
-
 
   const manualRefresh = () => {
     fetchPerformanceData()
@@ -254,7 +356,9 @@ export default function PortfolioPerformanceChart({ portfolioData }: PortfolioPe
           <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
             <div className="text-blue-600 text-sm font-medium mb-1">Portfolio XIRR</div>
             <div className="text-blue-900 text-3xl font-bold">
-              {metrics.portfolioXIRR.toFixed(1)}%
+              {Math.abs(metrics.portfolioXIRR) < 0.01 ? 
+                metrics.portfolioXIRR.toFixed(3) : 
+                metrics.portfolioXIRR.toFixed(1)}%
             </div>
             <div className="text-blue-700 text-xs mt-1">{timeframe} annualized</div>
           </div>
